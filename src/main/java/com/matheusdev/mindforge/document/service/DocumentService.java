@@ -2,6 +2,7 @@ package com.matheusdev.mindforge.document.service;
 
 import com.matheusdev.mindforge.document.model.Document;
 import com.matheusdev.mindforge.document.repository.DocumentRepository;
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.kanban.model.KanbanTask;
 import com.matheusdev.mindforge.kanban.repository.KanbanTaskRepository;
 import com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem;
@@ -38,19 +39,19 @@ public class DocumentService {
 
         if (projectId != null) {
             Project project = projectRepository.findById(projectId)
-                    .orElseThrow(() -> new RuntimeException("Project not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
             document.setProject(project);
         } else if (kanbanTaskId != null) {
             KanbanTask kanbanTask = kanbanTaskRepository.findById(kanbanTaskId)
-                    .orElseThrow(() -> new RuntimeException("Kanban task not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + kanbanTaskId));
             document.setKanbanTask(kanbanTask);
         } else if (knowledgeItemId != null) {
             KnowledgeItem knowledgeItem = knowledgeItemRepository.findById(knowledgeItemId)
-                    .orElseThrow(() -> new RuntimeException("Knowledge item not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + knowledgeItemId));
             document.setKnowledgeItem(knowledgeItem);
         } else if (studySessionId != null) {
             StudySession studySession = studySessionRepository.findById(studySessionId)
-                    .orElseThrow(() -> new RuntimeException("Study session not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + studySessionId));
             document.setStudySession(studySession);
         }
 

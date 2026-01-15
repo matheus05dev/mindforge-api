@@ -20,6 +20,7 @@ import org.springframework.web.client.RestTemplate;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/integrations/github")
@@ -43,24 +44,33 @@ public class IntegrationController {
     }
 
     @GetMapping("/callback")
-    public ResponseEntity<String> handleGitHubCallback(@RequestParam("code") String code) {
+    public ResponseEntity<String> handleGitHubCallback(@RequestParam("code") Optional<String> code, @RequestParam("error") Optional<String> error) {
+        if (error.isPresent()) {
+            return ResponseEntity.badRequest().body("Acesso negado pelo usuário: " + error.get());
+        }
+
+        if (code.isEmpty()) {
+            return ResponseEntity.badRequest().body("Código de autorização não encontrado.");
+        }
+
         final Long userId = 1L; // Placeholder para o usuário logado
 
-        String accessToken = getAccessToken(code);
+        GitHubAccessTokenResponse tokenResponse = getAccessToken(code.get());
 
         UserIntegration integration = userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElse(new UserIntegration());
 
         integration.setUserId(userId);
         integration.setProvider(UserIntegration.Provider.GITHUB);
-        integration.setAccessToken(accessToken);
+        integration.setAccessToken(tokenResponse.getAccessToken());
+        integration.setRefreshToken(tokenResponse.getRefreshToken()); // Salva o refresh token
 
         userIntegrationRepository.save(integration);
 
         return ResponseEntity.ok("Conta do GitHub conectada e token salvo com sucesso!");
     }
 
-    private String getAccessToken(String code) {
+    private GitHubAccessTokenResponse getAccessToken(String code) {
         String url = "https://github.com/login/oauth/access_token";
 
         HttpHeaders headers = new HttpHeaders();
@@ -80,6 +90,6 @@ public class IntegrationController {
             throw new RuntimeException("Falha ao obter o token de acesso do GitHub.");
         }
 
-        return response.getBody().getAccessToken();
+        return response.getBody();
     }
 }

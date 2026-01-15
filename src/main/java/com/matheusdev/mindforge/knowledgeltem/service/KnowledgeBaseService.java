@@ -1,5 +1,6 @@
 package com.matheusdev.mindforge.knowledgeltem.service;
 
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem;
 import com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class KnowledgeBaseService {
 
     public KnowledgeItem getItemById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Item not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + id));
     }
 
     public KnowledgeItem createItem(KnowledgeItem item) {
@@ -35,11 +36,13 @@ public class KnowledgeBaseService {
     }
 
     public void deleteItem(Long id) {
+        if (!repository.existsById(id)) {
+            throw new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + id);
+        }
         repository.deleteById(id);
     }
 
     public List<KnowledgeItem> searchByTag(String tag) {
-        // Agora usando a consulta otimizada do repositório.
         return repository.findByTag(tag);
     }
 }

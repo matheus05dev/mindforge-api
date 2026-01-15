@@ -6,6 +6,7 @@ import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
 import com.matheusdev.mindforge.ai.memory.repository.UserProfileAIRepository;
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -14,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,11 +22,12 @@ import java.util.Optional;
 public class MemoryService {
 
     private final UserProfileAIRepository userProfileAIRepository;
-    private final AIProvider aiProvider; // <-- MUDANÇA
+    private final AIProvider aiProvider;
     private final ObjectMapper objectMapper;
 
-    public Optional<UserProfileAI> getProfile(Long userId) {
-        return userProfileAIRepository.findById(userId);
+    public UserProfileAI getProfile(Long userId) {
+        return userProfileAIRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Perfil de IA não encontrado para o usuário com id: " + userId));
     }
 
     @Async
@@ -36,7 +37,6 @@ public class MemoryService {
 
         String metaPrompt = buildProfileUpdatePrompt(chatHistory);
         
-        // MUDANÇA: Usando o AIProvider
         AIProviderRequest request = new AIProviderRequest(metaPrompt);
         AIProviderResponse response = aiProvider.executeTask(request);
 

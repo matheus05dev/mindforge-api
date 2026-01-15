@@ -1,5 +1,7 @@
 package com.matheusdev.mindforge.project.service;
 
+import com.matheusdev.mindforge.exception.BusinessException;
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.project.dto.ProjectRequest;
 import com.matheusdev.mindforge.project.dto.ProjectResponse;
 import com.matheusdev.mindforge.project.mapper.ProjectMapper;
@@ -37,9 +39,19 @@ public class ProjectService {
                 .collect(Collectors.toList());
     }
 
+    public List<ProjectResponse> getProjectsByWorkspaceId(Long workspaceId) {
+        // Garante que o workspace existe antes de buscar os projetos
+        workspaceService.findById(workspaceId);
+
+        List<Project> projects = projectRepository.findAllByWorkspaceIdWithDetails(workspaceId);
+        return projects.stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
     public ProjectResponse getProjectById(Long projectId) {
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
         return mapper.toResponse(project);
     }
 
@@ -48,7 +60,7 @@ public class ProjectService {
         Workspace workspace = workspaceService.findById(request.getWorkspaceId());
 
         if (workspace.getType() != WorkspaceType.PROJECT && workspace.getType() != WorkspaceType.GENERIC) {
-            throw new IllegalArgumentException("Projetos só podem ser criados em workspaces do tipo PROJECT ou GENERIC.");
+            throw new BusinessException("Projetos só podem ser criados em workspaces do tipo PROJECT ou GENERIC.");
         }
 
         Project project = mapper.toEntity(request);
@@ -60,13 +72,12 @@ public class ProjectService {
     @Transactional
     public ProjectResponse updateProject(Long projectId, ProjectRequest request) {
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
         
-        // Validação: Garante que o projeto não está sendo movido para um workspace de tipo inválido
         if (request.getWorkspaceId() != null && !request.getWorkspaceId().equals(project.getWorkspace().getId())) {
              Workspace newWorkspace = workspaceService.findById(request.getWorkspaceId());
              if (newWorkspace.getType() != WorkspaceType.PROJECT && newWorkspace.getType() != WorkspaceType.GENERIC) {
-                throw new IllegalArgumentException("Projetos não podem ser movidos para workspaces deste tipo.");
+                throw new BusinessException("Projetos não podem ser movidos para workspaces deste tipo.");
              }
              project.setWorkspace(newWorkspace);
         }
@@ -78,13 +89,16 @@ public class ProjectService {
 
     @Transactional
     public void deleteProject(Long projectId) {
+        if (!projectRepository.existsById(projectId)) {
+            throw new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId);
+        }
         projectRepository.deleteById(projectId);
     }
 
     @Transactional
     public ProjectResponse linkRepository(Long projectId, String repoUrl) {
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
         project.setGithubRepoUrl(repoUrl);
         Project updatedProject = projectRepository.save(project);
         return mapper.toResponse(updatedProject);
@@ -93,7 +107,7 @@ public class ProjectService {
     @Transactional
     public MilestoneResponse addMilestone(Long projectId, MilestoneRequest request) {
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
         
         Milestone milestone = mapper.toEntity(request);
         milestone.setProject(project);
@@ -104,7 +118,7 @@ public class ProjectService {
     @Transactional
     public MilestoneResponse updateMilestone(Long milestoneId, MilestoneRequest request) {
         Milestone milestone = milestoneRepository.findById(milestoneId)
-                .orElseThrow(() -> new RuntimeException("Milestone not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Marco (milestone) não encontrado com o id: " + milestoneId));
         
         mapper.updateMilestoneFromRequest(request, milestone);
         Milestone updatedMilestone = milestoneRepository.save(milestone);
@@ -113,6 +127,9 @@ public class ProjectService {
 
     @Transactional
     public void deleteMilestone(Long milestoneId) {
+        if (!milestoneRepository.existsById(milestoneId)) {
+            throw new ResourceNotFoundException("Marco (milestone) não encontrado com o id: " + milestoneId);
+        }
         milestoneRepository.deleteById(milestoneId);
     }
 }
