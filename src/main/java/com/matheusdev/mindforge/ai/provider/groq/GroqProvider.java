@@ -1,24 +1,27 @@
-package com.matheusdev.mindforge.ai.provider.grok;
+package com.matheusdev.mindforge.ai.provider.groq;
 
 import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
-import com.matheusdev.mindforge.ai.provider.grok.dto.GroqRequest;
-import com.matheusdev.mindforge.ai.provider.grok.dto.GroqResponse;
+import com.matheusdev.mindforge.ai.provider.groq.dto.GroqRequest;
+import com.matheusdev.mindforge.ai.provider.groq.dto.GroqResponse;
 import com.matheusdev.mindforge.core.config.ResilienceConfig;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -34,9 +37,32 @@ public class GroqProvider implements AIProvider {
     @Value("${groq.api.url}")
     private String apiUrl;
 
-    private static final String SYSTEM_INSTRUCTION = "Você é um assistente prestativo. Responda sempre em português do Brasil (pt-BR). " +
-            "Use termos em inglês apenas para conceitos técnicos de programação quando estritamente necessário e, se possível, " +
-            "forneça uma tradução ou explicação do termo em português. Exemplo: '...usando um *framework* (uma estrutura de trabalho)...'";
+    @Getter
+    @RequiredArgsConstructor
+    public enum GroqModel {
+        VERSATILE("llama-3.3-70b-versatile", 1024, null),
+        INSTANT("llama-3.1-8b-instant", 1024, null),
+        GPT_OSS("openai/gpt-oss-20b", 8192, "medium"),
+        QWEN("qwen/qwen3-32b", 4096, "default"),
+        SCOUT("meta-llama/llama-4-scout-17b-16e-instruct", 1024, null),
+        MAVERICK("meta-llama/llama-4-maverick-17b-128e-instruct", 1024, null);
+
+        private final String modelName;
+        private final int maxTokens;
+        private final String reasoningEffort;
+
+        public static GroqModel fromString(String model) {
+            if (!StringUtils.hasText(model)) {
+                return INSTANT; // Modelo padrão caso nenhum seja fornecido
+            }
+            return Arrays.stream(values())
+                    .filter(groqModel -> groqModel.name().equalsIgnoreCase(model))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Modelo Groq desconhecido: " + model));
+        }
+    }
+
+    private static final String SYSTEM_INSTRUCTION = "Você é um assistente prestativo. Responda sempre em português do Brasil (pt-BR).";
 
     @Override
     @CircuitBreaker(name = ResilienceConfig.AI_PROVIDER_INSTANCE, fallbackMethod = "fallback")
@@ -49,23 +75,24 @@ public class GroqProvider implements AIProvider {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("Authorization", "Bearer " + apiKey);
 
+            GroqModel selectedModel = GroqModel.fromString(request.model());
+
             List<GroqRequest.Message> messages = new ArrayList<>();
             messages.add(new GroqRequest.Message("system", SYSTEM_INSTRUCTION));
             messages.add(new GroqRequest.Message("user", request.textPrompt()));
 
-            GroqRequest grokRequest = new GroqRequest(
-                    "openai/gpt-oss-120b",
+            GroqRequest groqRequest = new GroqRequest(
+                    selectedModel.getModelName(),
                     messages,
                     true,
                     1.0,
-                    8192,
+                    selectedModel.getMaxTokens(),
                     1.0,
                     null,
-                    "medium"
+                    selectedModel.getReasoningEffort()
             );
 
-            HttpEntity<GroqRequest> entity = new HttpEntity<>(grokRequest, headers);
-
+            HttpEntity<GroqRequest> entity = new HttpEntity<>(groqRequest, headers);
             GroqResponse response = restTemplate.postForObject(apiUrl, entity, GroqResponse.class);
 
             if (response != null && !response.choices().isEmpty()) {

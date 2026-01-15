@@ -1,4 +1,4 @@
-package com.matheusdev.mindforge.ai.provider.grok.dto;
+package com.matheusdev.mindforge.ai.provider.groq.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
