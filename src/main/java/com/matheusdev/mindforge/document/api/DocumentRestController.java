@@ -40,7 +40,7 @@ public class DocumentRestController {
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long kanbanTaskId,
             @RequestParam(required = false) Long knowledgeItemId,
-            @RequestParam(required = false) Long studySessionId) {
+            @RequestParam(required = false) Long studySessionId) throws IOException {
         Document document = documentService.storeFile(file, projectId, kanbanTaskId, knowledgeItemId, studySessionId);
         return ResponseEntity.ok(documentMapper.toResponse(document));
     }

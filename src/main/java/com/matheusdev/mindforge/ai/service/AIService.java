@@ -74,7 +74,7 @@ public class AIService {
         ChatSession session = chatService.getOrCreateGenericChatSession(request);
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompt);
         
-        AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemMessage, model);
+        AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemMessage, model, request.getProvider());
         AIProviderResponse aiResponse = promptCacheService.executeRequest(aiRequest);
         
         if (aiResponse.getError() != null) {
