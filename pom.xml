@@ -28,8 +28,11 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<lombok.version>1.18.30</lombok.version>
 		<org.mapstruct.version>1.5.5.Final</org.mapstruct.version>
 		<resilience4j.version>2.1.0</resilience4j.version>
+		<!-- Override to avoid known vulnerable transitive version flagged by Mend -->
+		<commons-lang3.version>3.19.0</commons-lang3.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -64,6 +67,7 @@
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<!-- bumped to a newer release to match newer Spring Frameworks and avoid ControllerAdviceBean signature mismatches -->
 			<version>2.1.0</version>
 		</dependency>
 
@@ -73,6 +77,11 @@
 			<version>${org.mapstruct.version}</version>
 		</dependency>
 
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>${commons-lang3.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>
@@ -87,6 +96,7 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
+			<version>${lombok.version}</version>
 			<optional>true</optional>
 		</dependency>
 		<dependency>
@@ -114,6 +124,7 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
+					<release>${java.version}</release>
 					<annotationProcessorPaths>
 						<path>
 							<groupId>org.projectlombok</groupId>
