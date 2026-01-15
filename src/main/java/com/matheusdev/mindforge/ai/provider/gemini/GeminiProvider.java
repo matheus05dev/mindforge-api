@@ -33,10 +33,10 @@ public class GeminiProvider implements AIProvider {
     public AIProviderResponse executeTask(AIProviderRequest request) {
         // O modelo gemini-pro-vision é usado para multimodalidade
         String modelUrl = apiUrl.replace("gemini-pro", "gemini-pro-vision");
-        String url = modelUrl + "?key=" + apiKey;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("x-goog-api-key", apiKey);
 
         List<GeminiRequest.Part> parts = new ArrayList<>();
         if (request.getTextPrompt() != null) {
@@ -53,7 +53,7 @@ public class GeminiProvider implements AIProvider {
         HttpEntity<GeminiRequest> entity = new HttpEntity<>(geminiRequest, headers);
 
         try {
-            GeminiResponse response = restTemplate.postForObject(url, entity, GeminiResponse.class);
+            GeminiResponse response = restTemplate.postForObject(modelUrl, entity, GeminiResponse.class);
 
             if (response != null && !response.candidates().isEmpty() && !response.candidates().get(0).content().parts().isEmpty()) {
                 String responseText = response.candidates().get(0).content().parts().get(0).text();
