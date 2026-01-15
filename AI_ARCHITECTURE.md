@@ -1,4 +1,4 @@
-# Whitepaper da Arquitetura de IA do MindForge
+# Arquitetura Detalhada do Módulo de IA
 
 ## 1. Filosofia e Decisões Arquiteturais Chave
 
@@ -39,9 +39,14 @@ flowchart TD
     Router -- "Pergunta Genérica" --> Generic["Preparar Resposta Genérica"]
 
     subgraph "2. Motor de Contexto"
-        CodeAnalysis, PortfolioReview, ProductThinking, Generic --> FetchProfile["Buscar Perfil de Aprendizado (Memória)"]
-        CodeAnalysis, Generic --> FetchSubject["Buscar Nível de Proficiência (Domínio)"]
-        FetchProfile, FetchSubject --> ContextReady["Contexto Completo"]
+        CodeAnalysis --> FetchProfile["Buscar Perfil de Aprendizado (Memória)"]
+        PortfolioReview --> FetchProfile
+        ProductThinking --> FetchProfile
+        Generic --> FetchProfile
+        CodeAnalysis --> FetchSubject["Buscar Nível de Proficiência (Domínio)"]
+        Generic --> FetchSubject
+        FetchProfile --> ContextReady["Contexto Completo"]
+        FetchSubject --> ContextReady
     end
 
     subgraph "3. Motor de Prompt"
@@ -58,7 +63,14 @@ flowchart TD
         OCR --> PromptOCR["Construir Prompt: Transcrição"]
     end
 
-    PromptMentor, PromptAnalyst, PromptDebug, PromptSocratic, PromptRecruiter, PromptPM, PromptEditor, PromptOCR --> AIProvider{"4. AI Provider (Abstração)"}
+    PromptMentor --> AIProvider{"4. AI Provider (Abstração)"}
+    PromptAnalyst --> AIProvider
+    PromptDebug --> AIProvider
+    PromptSocratic --> AIProvider
+    PromptRecruiter --> AIProvider
+    PromptPM --> AIProvider
+    PromptEditor --> AIProvider
+    PromptOCR --> AIProvider
     
     subgraph "5. APIs Externas"
         AIProvider --> GeminiAPI["Google Gemini API"]

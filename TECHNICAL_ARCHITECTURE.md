@@ -1,31 +1,20 @@
-# Whitepaper da Arquitetura de IA do MindForge
+# Arquitetura Técnica Detalhada do MindForge
 
-## 1. Filosofia e Decisões Arquiteturais Chave
+## 1. Filosofia e Princípios de Arquitetura
 
-A arquitetura de IA do MindForge é fundamentada na **orquestração inteligente** em vez da dependência de um único modelo de linguagem. As seguintes decisões de design foram cruciais para alcançar um sistema flexível, contextual e robusto.
+O MindForge foi concebido para ser mais do que uma API de CRUD. A visão é criar uma plataforma de produtividade e aprendizado que atua como um "segundo cérebro" proativo e inteligente. Para alcançar essa visão, a arquitetura foi guiada por princípios fundamentais que equilibram a velocidade de desenvolvimento com a manutenibilidade e flexibilidade a longo prazo.
 
-### Decisão 1: Orquestração em Java vs. Microserviço em Python
--   **Escolha:** Manter a lógica de IA dentro do monólito modular Java/Spring Boot.
--   **Justificativa:** Para o estágio atual do projeto, a complexidade de gerenciar um microserviço separado (deployment, comunicação inter-serviços, latência de rede) superaria os benefícios. A orquestração em Java simplifica a infraestrutura e permite que a lógica de IA acesse diretamente os serviços de domínio e o banco de dados para coletar contexto, resultando em menor latência e maior coesão de dados.
--   **Trade-off:** Abre-se mão do acesso direto ao ecossistema de bibliotecas de IA do Python (ex: LangChain, LlamaIndex). Este trade-off é mitigado pela implementação de padrões de design sólidos em Java que replicam a funcionalidade necessária.
+1.  **Separation of Concerns (SoC):** A lógica de negócio (gerenciamento de dados) é mantida estritamente separada da lógica de integração com a IA. Mesmo dentro de um monólito, a camada de IA é desacoplada através de interfaces, garantindo que o código seja modular e fácil de entender.
 
-### Decisão 2: Padrão Strategy para Provedores de IA (`AIProvider`)
--   **Escolha:** Abstrair a comunicação com as APIs de IA através da interface `AIProvider`.
--   **Justificativa:** Evita o acoplamento forte com um fornecedor específico (ex: Google, Groq). Isso torna o sistema **agnóstico ao provedor**, permitindo:
-    1.  **Flexibilidade:** Trocar ou adicionar novos modelos de IA (ex: Anthropic, OpenAI) com impacto mínimo, implementando apenas uma nova classe `Provider`.
-    2.  **Otimização:** Usar diferentes provedores para diferentes tarefas (ex: Gemini para multimodalidade, Groq para baixa latência), otimizando custo e performance.
--   **Trade-off:** Adiciona uma camada de abstração que, embora pequena, aumenta a complexidade inicial do código.
+2.  **Pragmatismo sobre Dogma:** A decisão de integrar a IA diretamente na aplicação Java, em vez de usar um microserviço Python, foi uma escolha pragmática para o estágio atual do projeto. Ela reduz a complexidade de infraestrutura e acelera o desenvolvimento, ao mesmo tempo que o design interno (Padrão Strategy/Provider) mantém a flexibilidade para trocar o modelo de IA no futuro.
 
-### Decisão 3: Ciclo de Memória Assíncrono
--   **Escolha:** Executar a lógica de atualização da memória da IA (`MemoryService`) em uma thread separada (`@Async`).
--   **Justificativa:** A experiência do usuário não deve ser penalizada pela "inteligência" do sistema. A resposta à requisição principal do usuário é retornada com a menor latência possível. O processo de "aprendizado" da IA, que envolve uma chamada extra à API, ocorre em background, sem bloquear a thread principal.
--   **Trade-off:** A memória não é atualizada em tempo real, o que significa que o aprendizado de uma interação só estará disponível para a *próxima* requisição. Para o caso de uso de um mentor, essa consistência eventual é perfeitamente aceitável.
+3.  **Manutenibilidade e Evolução:** O projeto é um **Monólito Modular**. Os domínios de negócio (`study`, `project`, etc.) são bem definidos em pacotes separados, o que torna o sistema fácil de entender e manter. Esta modularidade é uma base sólida para uma futura extração para microserviços, se a complexidade e a escala justificarem.
 
----
+4.  **Frontend Desacoplado (API-First):** A API foi projetada para ser consumida por qualquer cliente (web, mobile, desktop). Isso significa que o frontend é uma aplicação separada que se comunica exclusivamente através dos endpoints RESTful da API.
 
-## 2. Arquitetura Dinâmica: A Anatomia de uma Requisição
+## 2. System Design e Fluxo de Dados Dinâmico
 
-O diagrama abaixo detalha o fluxo completo de uma requisição de análise de código, ilustrando a colaboração entre os componentes.
+A arquitetura do MindForge é a de um **Monólito Modular** que orquestra chamadas para APIs externas. A melhor forma de entender a interação entre os componentes é através de um Diagrama de Sequência, que ilustra o fluxo de dados mais completo do sistema: a análise de um arquivo do GitHub com o ciclo de memória.
 
 ```mermaid
 sequenceDiagram
@@ -60,52 +49,82 @@ sequenceDiagram
     end
 ```
 
----
+## 3. O Padrão "AI Provider" e a Orquestração
 
-## 3. Deep Dive: O Ciclo de Memória Assíncrono
+Para evitar um acoplamento forte com um único modelo de IA, foi implementado o Padrão Strategy. O `AIService` depende de uma interface `AIProvider`, e o `GeminiProvider` e o `GroqProvider` são implementações concretas.
 
-O ciclo de memória é o que permite à IA evoluir de uma ferramenta de pergunta-resposta para um mentor que aprende. O diagrama abaixo foca exclusivamente neste processo.
+Isso foi elevado com um **serviço de orquestração** (`GroqOrchestratorService`), que adiciona uma camada de decisão, permitindo ao sistema:
+-   Escolher o provedor mais adequado para a tarefa.
+-   Selecionar modelos específicos dentro de um provedor (ex: um modelo rápido para tarefas simples, um modelo poderoso para análises complexas).
+-   Implementar uma lógica de **fallback**, onde se a chamada para um modelo falhar, o sistema pode tentar novamente com um modelo secundário, aumentando a resiliência.
 
-```mermaid
-sequenceDiagram
-    participant AIService
-    participant MemoryService
-    participant AIProvider
-    participant Database
+## 4. Anatomia do Cérebro de IA: Engenharia de Prompt e Memória
 
-    Note over AIService: Requisição principal já foi respondida.
-    AIService->>+MemoryService: 1. updateUserProfile() [@Async]
-    
-    MemoryService->>+Database: 2. Get current UserProfileAI (JSON)
-    Database-->>-MemoryService: 3. Return current profile
-    
-    MemoryService->>MemoryService: 4. Build Meta-Prompt (conversation history + current profile)
-    
-    MemoryService->>+AIProvider: 5. Execute Meta-Analysis Task
-    AIProvider-->>-MemoryService: 6. Return updated profile (JSON)
-    
-    MemoryService->>+Database: 7. Persist new UserProfileAI
-    Database-->>-MemoryService: 
-    
-    MemoryService-->>-AIService: 
-```
+A "inteligência" do MindForge não vem do modelo de IA em si, mas da **orquestração e engenharia de prompt** realizadas pelo `AIService` em Java. Ele atua como um "diretor de cena", usando técnicas avançadas para controlar o comportamento da IA:
 
--   **O Meta-Prompt:** A chave para este ciclo é o "prompt sobre o prompt". É uma instrução para a IA analisar a interação e seu próprio estado anterior para gerar um novo estado.
-    > **Exemplo de Meta-Prompt:** `"Analise a conversa a seguir e o perfil JSON existente. O usuário demonstrou entendimento de 'SOLID' mas dificuldade com 'Java Streams'. Retorne um NOVO perfil JSON atualizado com esses aprendizados. Mantenha o formato JSON."`
--   **Impacto:** Este mecanismo cria um ciclo de feedback positivo, onde a IA se torna progressivamente mais ciente do contexto do usuário, resultando em interações futuras mais ricas e personalizadas.
+-   **Atribuição de Persona:** A IA é instruída a assumir diferentes papéis (`"Aja como um Tech Recruiter"`).
+-   **Injeção de Contexto:** O prompt é enriquecido com dados do sistema (nível do usuário, perfil de memória).
+-   **Instrução de Formato de Saída:** A IA é comandada a retornar a resposta em formatos específicos (Markdown, JSON).
 
----
+### 4.1. Deep Dive: O Módulo de Memória (`MemoryService`)
 
-## 4. Resiliência e Tratamento de Falhas
+O `MemoryService` é o que eleva a IA do MindForge de uma ferramenta de "pergunta e resposta" para um **mentor que aprende e se adapta**. Ele implementa um ciclo de aprendizado contínuo que permite à IA construir um modelo mental do usuário ao longo do tempo.
 
-Um sistema que depende de serviços de rede externos deve ser inerentemente resiliente. A arquitetura do MindForge incorpora múltiplos padrões de resiliência, principalmente na camada de `AIProvider`, utilizando a biblioteca **Resilience4j**.
+-   **Objetivo:** Criar uma memória persistente sobre o perfil de aprendizado do usuário (pontos fortes, fracos, interesses).
+-   **Impacto na Experiência do Usuário:**
+    -   **Personalização:** As respostas da IA se tornam cada vez mais personalizadas e cientes da jornada do usuário.
+    -   **Continuidade:** O usuário sente que está continuando uma conversa com um mentor que o conhece.
+-   **Componentes:**
+    -   **`UserProfileAI` (Entidade):** O "dossiê" da IA sobre o usuário, armazenando um resumo e um JSON com dados estruturados.
+    -   **`MemoryService` (Serviço):** Orquestra o ciclo de memória. Seu método `updateUserProfile` é **assíncrono (`@Async`)** para não impactar a latência da resposta principal.
+-   **Fluxo do Ciclo de Memória (Meta-Análise):**
+    1.  Após uma interação, o `MemoryService` é chamado em background.
+    2.  Ele usa o `AIProvider` para fazer uma **"pergunta a si mesmo"**, enviando o histórico da conversa com um **meta-prompt** que instrui a IA a analisar a interação e extrair um perfil atualizado do usuário em formato JSON.
+    3.  A IA retorna o JSON, que é salvo na entidade `UserProfileAI`, enriquecendo o contexto para a próxima interação.
+-   **Trade-offs:** Esta abordagem gera uma chamada extra à API da IA (mitigada pelo `@Async`) e depende da qualidade do meta-prompt para funcionar bem.
 
--   **Circuit Breaker:** Cada implementação de `AIProvider` (ex: `GroqProvider`) é anotada com `@CircuitBreaker`. Se um provedor de IA começar a falhar repetidamente (ex: API fora do ar), o circuito "abre" e as chamadas subsequentes falham imediatamente, sem sequer tentar a conexão de rede. Isso previne que a aplicação gaste recursos em um serviço sabidamente indisponível. Após um tempo, o circuito tenta fechar com uma chamada de teste.
--   **Retry:** A anotação `@Retry` permite que uma chamada falha seja automaticamente tentada novamente algumas vezes. Isso é útil para falhas transitórias de rede. Se a primeira chamada falhar, o sistema espera um intervalo configurado e tenta de novo, até um número máximo de tentativas.
--   **Rate Limiter:** A anotação `@RateLimiter` controla o número de chamadas por segundo que podem ser feitas para a API externa. Isso é crucial para não exceder os limites de uso impostos pelos provedores de IA e evitar custos inesperados ou bloqueios de API.
--   **Time Limiter:** A anotação `@TimeLimiter` define um tempo máximo de espera para a resposta da API. Se a API demorar mais do que o esperado para responder, a chamada é interrompida. Isso evita que threads fiquem presas indefinidamente, aguardando uma resposta que pode nunca chegar.
--   **Fallback de Orquestração:** Além da resiliência a nível de chamada, o `GroqOrchestratorService` implementa um fallback a nível de negócio. Se a chamada ao modelo primário (`VERSATILE`) falhar por qualquer motivo (incluindo um circuito aberto), a lógica de orquestração captura a falha e dispara uma nova chamada para o modelo secundário (`INSTANT`), garantindo a continuidade do serviço para o usuário.
+## 5. Anatomia dos Bounded Contexts (Domínios de Negócio)
 
-## 5. Conclusão
+A API é organizada em "Bounded Contexts", um conceito do Domain-Driven Design (DDD), onde cada domínio tem suas próprias responsabilidades e modelos.
 
-A arquitetura de IA do MindForge é um exemplo de como a engenharia de software pragmática pode ser usada para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design, como a orquestração em Java, o padrão Strategy, o ciclo de memória assíncrono e a implementação de múltiplos padrões de resiliência, resultam em um sistema que é muito mais do que um simples cliente de API. É uma plataforma que agrega valor real ao transformar modelos de linguagem genéricos em ferramentas de aprendizado contextuais e personalizadas, com a flexibilidade de evoluir e se adaptar ao futuro do cenário de IA.
+-   **`Study Context`:** Gerencia o progresso de aprendizado (`Subject`, `StudySession`).
+-   **`Project Context`:** Gerencia o ciclo de vida de projetos (`Project`, `Milestone`).
+-   **`Kanban Context`:** Gerencia o fluxo de trabalho (`KanbanBoard`, `KanbanColumn`, `KanbanTask`).
+-   **`Knowledge Context`:** Serve como um "segundo cérebro" para anotações (`KnowledgeItem`).
+-   **`Document Context`:** Abstrai o armazenamento de arquivos (`Document`).
+-   **`AI & Integration Context`:** Orquestra toda a inteligência e comunicação externa (`ChatSession`, `UserProfileAI`, `UserIntegration`).
+
+## 6. Justificativas Tecnológicas e Trade-offs
+
+### 6.1. Escolha da Stack Java/Spring Boot
+-   **Por Quê:** Robustez, ecossistema maduro e produtividade para aplicações backend complexas.
+-   **Trade-offs:** Curva de aprendizado e overhead maiores em comparação com frameworks mais leves.
+
+### 6.2. Escolha do Padrão "AI Provider" (Monólito)
+-   **Por Quê:** Simplicidade de infraestrutura e foco na Engenharia de Prompt.
+-   **Trade-offs:** Menor escalabilidade e perda de acesso ao ecossistema de bibliotecas de IA do Python.
+
+### 6.3. Escolha dos Modelos de IA (Multi-Provider)
+-   **Por Quê:**
+    -   **Google Gemini:** Altas capacidades multimodais (essencial para OCR), acessibilidade e performance de ponta.
+    -   **Groq:** Foco em alta velocidade (tokens/segundo) para modelos de linguagem open-source, ideal para interações que exigem baixa latência.
+    -   A arquitetura de provedores permite usar o melhor de cada um, otimizando custo, velocidade e capacidade para diferentes tarefas.
+-   **Trade-offs:** Aumento da complexidade na lógica de orquestração e necessidade de gerenciar múltiplas chaves de API e contratos.
+
+### 6.4. Frontend Desacoplado (API-First)
+-   **Por Quê:** Flexibilidade para escolher qualquer tecnologia de frontend e reutilização da API.
+-   **Trade-offs:** Requer a construção de uma aplicação frontend separada.
+
+## 7. Trade-offs Atuais e Próximas Atualizações
+
+### 7.1. Autenticação e Perfil de Usuário (Trade-offs Atuais)
+-   **Estado Atual:** O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade de segurança e multi-tenancy foi conscientemente adiada para focar na lógica de IA.
+-   **Trade-offs:** A API é aberta, e a personalização é limitada a um único perfil.
+
+### 7.2. Próximas Atualizações (Roadmap)
+1.  **Sistema de Autenticação e Autorização (Spring Security + JWT):** Proteger a API e permitir múltiplos usuários.
+2.  **Criação de Perfil de Usuário e Workspaces:** Permitir que cada usuário tenha seus próprios dados e contextos.
+3.  **Workspaces Colaborativos:** Habilitar a colaboração em projetos e estudos com gerenciamento de permissões.
+4.  **Refinamento da Memória da IA:** Aprimorar os meta-prompts do `MemoryService` para um perfil de aprendizado ainda mais detalhado.
+
+Este documento serve como um guia abrangente para a arquitetura do MindForge, detalhando suas escolhas de design, fluxos de dados e o caminho para sua evolução.
