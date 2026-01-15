@@ -1,6 +1,5 @@
 package com.matheusdev.mindforge.ai.service;
 
-import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.chat.model.ChatMessage;
@@ -42,7 +41,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AIService {
 
-    private final AIProvider aiProvider;
+    private final PromptCacheService promptCacheService;
     private final MemoryService memoryService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeItemMapper knowledgeItemMapper;
@@ -84,7 +83,7 @@ public class AIService {
         ChatSession session = getOrCreateChatSession(subject, request.getMode().name());
         ChatMessage userMessage = saveMessage(session, "user", prompt);
         
-        AIProviderResponse aiResponse = aiProvider.executeTask(new AIProviderRequest(prompt));
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
 
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
@@ -105,9 +104,11 @@ public class AIService {
         final Long userId = 1L; // Provisório
         Project project = projectRepository.findById(request.getProjectId())
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + request.getProjectId()));
-        UserIntegration integration = userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
+        
+        // A verificação de integração agora é feita dentro do GitHubClient, mas mantemos aqui para fail-fast
+        userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub."));
-        String accessToken = integration.getAccessToken();
+        
         String repoUrl = project.getGithubRepoUrl();
         if (repoUrl == null || repoUrl.isEmpty()) {
             throw new BusinessException("O projeto não está vinculado a um repositório do GitHub.");
@@ -115,7 +116,10 @@ public class AIService {
         String[] urlParts = repoUrl.replace("https://github.com/", "").split("/");
         String owner = urlParts[0];
         String repoName = urlParts[1];
-        String fileContent = gitHubClient.getFileContent(accessToken, owner, repoName, request.getFilePath());
+        
+        // MUDANÇA: Passando userId para o GitHubClient
+        String fileContent = gitHubClient.getFileContent(userId, owner, repoName, request.getFilePath());
+        
         Subject subject = subjectRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Nenhum assunto de estudo encontrado para contextualizar a análise."));
         CodeAnalysisRequest internalRequest = new CodeAnalysisRequest();
@@ -130,7 +134,7 @@ public class AIService {
         KnowledgeItem item = knowledgeBaseService.getItemById(itemId);
         String prompt = buildContentModificationPrompt(item.getContent(), instruction);
         
-        AIProviderResponse aiResponse = aiProvider.executeTask(new AIProviderRequest(prompt));
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
 
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
@@ -156,7 +160,7 @@ public class AIService {
         String prompt = "Transcreva o texto contido nesta imagem.";
         AIProviderRequest request = new AIProviderRequest(prompt, fileContent, document.getFileType());
         
-        AIProviderResponse aiResponse = aiProvider.executeTask(request);
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(request);
 
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
@@ -183,7 +187,9 @@ public class AIService {
         String prompt = buildGenericPrompt(request.getQuestion(), contextInfo, profileSummary);
         ChatSession session = getOrCreateGenericChatSession(request);
         ChatMessage userMessage = saveMessage(session, "user", prompt);
-        AIProviderResponse aiResponse = aiProvider.executeTask(new AIProviderRequest(prompt));
+        
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
+        
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
         }
@@ -201,13 +207,20 @@ public class AIService {
         String[] urlParts = request.getGithubRepoUrl().replace("https://github.com/", "").split("/");
         String owner = urlParts[0];
         String repoName = urlParts[1];
-        UserIntegration integration = userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
+        
+        // A verificação de integração agora é feita dentro do GitHubClient, mas mantemos aqui para fail-fast
+        userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub para esta operação."));
-        String readmeContent = gitHubClient.getFileContent(integration.getAccessToken(), owner, repoName, "README.md");
+        
+        // MUDANÇA: Passando userId para o GitHubClient
+        String readmeContent = gitHubClient.getFileContent(userId, owner, repoName, "README.md");
+        
         String prompt = buildPortfolioReviewerPrompt(readmeContent);
         ChatSession session = getOrCreateGenericChatSession(null);
         ChatMessage userMessage = saveMessage(session, "user", prompt);
-        AIProviderResponse aiResponse = aiProvider.executeTask(new AIProviderRequest(prompt));
+        
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
+        
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
         }
@@ -219,7 +232,9 @@ public class AIService {
         String prompt = buildProductThinkerPrompt(request.getFeatureDescription());
         ChatSession session = getOrCreateGenericChatSession(null);
         ChatMessage userMessage = saveMessage(session, "user", prompt);
-        AIProviderResponse aiResponse = aiProvider.executeTask(new AIProviderRequest(prompt));
+        
+        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
+        
         if (aiResponse.getError() != null) {
             throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
         }
@@ -413,4 +428,3 @@ public class AIService {
         );
     }
 }
-

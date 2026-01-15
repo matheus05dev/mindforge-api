@@ -8,9 +8,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class GitHubTokenService {
@@ -23,36 +24,58 @@ public class GitHubTokenService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    /**
-     * Refreshes the GitHub access token using the provided refresh token.
-     * @param refreshToken The refresh token.
-     * @return A response entity containing the new access token details.
-     */
-    public GitHubAccessTokenResponse refreshAccessToken(String refreshToken) {
+    public GitHubAccessTokenResponse exchangeCodeForToken(String code) {
         String url = "https://github.com/login/oauth/access_token";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
 
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", githubClientId);
-        body.add("client_secret", githubClientSecret);
-        body.add("refresh_token", refreshToken);
-        body.add("grant_type", "refresh_token");
+        Map<String, String> body = new HashMap<>();
+        body.put("client_id", githubClientId);
+        body.put("client_secret", githubClientSecret);
+        body.put("code", code);
 
-        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(body, headers);
 
         try {
             ResponseEntity<GitHubAccessTokenResponse> response = restTemplate.postForEntity(url, entity, GitHubAccessTokenResponse.class);
 
             if (response.getBody() == null || response.getBody().getAccessToken() == null) {
-                throw new BusinessException("Falha ao atualizar o token de acesso do GitHub: resposta inválida do servidor.");
+                throw new BusinessException("Falha ao obter o token de acesso do GitHub: resposta inválida.");
             }
 
             return response.getBody();
         } catch (Exception ex) {
-            throw new BusinessException("Falha ao comunicar com o servidor do GitHub para atualizar o token.", ex);
+            throw new BusinessException("Erro ao comunicar com o GitHub para trocar o código pelo token.", ex);
+        }
+    }
+
+    public GitHubAccessTokenResponse refreshAccessToken(String refreshToken) {
+        String url = "https://github.com/login/oauth/access_token";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+
+        Map<String, String> body = new HashMap<>();
+        body.put("client_id", githubClientId);
+        body.put("client_secret", githubClientSecret);
+        body.put("refresh_token", refreshToken);
+        body.put("grant_type", "refresh_token");
+
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<GitHubAccessTokenResponse> response = restTemplate.postForEntity(url, entity, GitHubAccessTokenResponse.class);
+
+            if (response.getBody() == null || response.getBody().getAccessToken() == null) {
+                throw new BusinessException("Falha ao atualizar o token de acesso do GitHub: resposta inválida.");
+            }
+
+            return response.getBody();
+        } catch (Exception ex) {
+            throw new BusinessException("Erro ao comunicar com o GitHub para atualizar o token.", ex);
         }
     }
 }

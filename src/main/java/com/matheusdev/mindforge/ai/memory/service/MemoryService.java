@@ -38,7 +38,8 @@ public class MemoryService {
         String metaPrompt = buildProfileUpdatePrompt(chatHistory);
         
         AIProviderRequest request = new AIProviderRequest(metaPrompt);
-        AIProviderResponse response = aiProvider.executeTask(request);
+        // Usando .join() para esperar o CompletableFuture
+        AIProviderResponse response = aiProvider.executeTask(request).join();
 
         if (response.getError() != null || response.getContent() == null) {
             log.error("Falha ao atualizar perfil de IA para o usuário {}: {}", userId, response.getError());
