@@ -7,8 +7,8 @@ import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
 import com.matheusdev.mindforge.ai.memory.repository.UserProfileAIRepository;
 import com.matheusdev.mindforge.exception.ResourceNotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,13 +17,20 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class MemoryService {
 
     private final UserProfileAIRepository userProfileAIRepository;
     private final AIProvider aiProvider;
     private final ObjectMapper objectMapper;
+
+    public MemoryService(UserProfileAIRepository userProfileAIRepository,
+                         @Qualifier("AIOrchestratorService") AIProvider aiProvider,
+                         ObjectMapper objectMapper) {
+        this.userProfileAIRepository = userProfileAIRepository;
+        this.aiProvider = aiProvider;
+        this.objectMapper = objectMapper;
+    }
 
     public UserProfileAI getProfile(Long userId) {
         return userProfileAIRepository.findById(userId)

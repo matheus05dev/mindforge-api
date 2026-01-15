@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 
 @Service
@@ -28,7 +29,7 @@ public class DocumentService {
     private final KnowledgeItemRepository knowledgeItemRepository;
     private final StudySessionRepository studySessionRepository;
 
-    public Document storeFile(MultipartFile file, Long projectId, Long kanbanTaskId, Long knowledgeItemId, Long studySessionId) {
+    public Document storeFile(MultipartFile file, Long projectId, Long kanbanTaskId, Long knowledgeItemId, Long studySessionId) throws IOException {
         String fileName = fileStorageService.storeFile(file);
 
         Document document = new Document();
@@ -56,5 +57,14 @@ public class DocumentService {
         }
 
         return documentRepository.save(document);
+    }
+
+    public Document findDocumentById(Long documentId) {
+        return documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Documento não encontrado com o id: " + documentId));
+    }
+
+    public byte[] getDocumentContent(Document document) throws IOException {
+        return fileStorageService.loadFileAsBytes(document.getFileName());
     }
 }

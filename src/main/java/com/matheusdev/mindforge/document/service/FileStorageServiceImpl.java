@@ -30,7 +30,7 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    public String storeFile(MultipartFile file) {
+    public String storeFile(MultipartFile file) throws IOException {
         String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
         String fileExtension = "";
         try {
@@ -67,6 +67,15 @@ public class FileStorageServiceImpl implements FileStorageService {
         } catch (MalformedURLException ex) {
             throw new RuntimeException("File not found " + fileName, ex);
         }
+    }
+
+    @Override
+    public byte[] loadFileAsBytes(String fileName) throws IOException {
+        Path filePath = this.fileStorageLocation.resolve(fileName).normalize();
+        if (!Files.exists(filePath)) {
+            throw new RuntimeException("File not found " + fileName);
+        }
+        return Files.readAllBytes(filePath);
     }
 
     @Override

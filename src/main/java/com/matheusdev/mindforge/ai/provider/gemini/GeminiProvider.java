@@ -18,8 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -42,29 +42,28 @@ public class GeminiProvider implements AIProvider {
     @TimeLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
     public CompletableFuture<AIProviderResponse> executeTask(AIProviderRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            String modelUrl = apiUrl.replace("gemini-pro", "gemini-pro-vision");
-
+            String fullApiUrl = apiUrl + "&key=" + apiKey;
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-goog-api-key", apiKey);
 
-            List<GeminiRequest.Part> parts = new ArrayList<>();
-            if (request.getTextPrompt() != null) {
-                parts.add(GeminiRequest.Part.fromText(request.getTextPrompt()));
-            }
-            if (request.isMultimodal()) {
-                String encodedString = Base64.getEncoder().encodeToString(request.getImageData());
-                parts.add(GeminiRequest.Part.fromImage(request.getImageMimeType(), encodedString));
+            GeminiRequest.Part textPart = GeminiRequest.Part.fromText(request.textPrompt());
+            List<GeminiRequest.Part> parts;
+
+            if (request.multimodal()) {
+                String base64ImageData = Base64.getEncoder().encodeToString(request.imageData());
+                GeminiRequest.Part imagePart = GeminiRequest.Part.fromImage(request.imageMimeType(), base64ImageData);
+                parts = List.of(textPart, imagePart);
+            } else {
+                parts = Collections.singletonList(textPart);
             }
 
             GeminiRequest.Content content = new GeminiRequest.Content(parts);
-            GeminiRequest geminiRequest = new GeminiRequest(List.of(content));
-
+            GeminiRequest geminiRequest = new GeminiRequest(Collections.singletonList(content));
             HttpEntity<GeminiRequest> entity = new HttpEntity<>(geminiRequest, headers);
 
-            GeminiResponse response = restTemplate.postForObject(modelUrl, entity, GeminiResponse.class);
+            GeminiResponse response = restTemplate.postForObject(fullApiUrl, entity, GeminiResponse.class);
 
-            if (response != null && !response.candidates().isEmpty() && !response.candidates().get(0).content().parts().isEmpty()) {
+            if (response != null && !response.candidates().isEmpty()) {
                 String responseText = response.candidates().get(0).content().parts().get(0).text();
                 return new AIProviderResponse(responseText, null);
             }
@@ -73,6 +72,6 @@ public class GeminiProvider implements AIProvider {
     }
 
     public CompletableFuture<AIProviderResponse> fallback(AIProviderRequest request, Throwable t) {
-        return CompletableFuture.completedFuture(new AIProviderResponse(null, "Serviço de IA indisponível no momento. Causa: " + t.getMessage()));
+        return CompletableFuture.completedFuture(new AIProviderResponse(null, "Serviço de IA (Gemini) indisponível no momento. Causa: " + t.getMessage()));
     }
 }

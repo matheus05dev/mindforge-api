@@ -4,17 +4,20 @@ import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.core.config.CacheConfig;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class PromptCacheService {
 
     private final AIProvider aiProvider;
+
+    public PromptCacheService(@Qualifier("AIOrchestratorService") AIProvider aiProvider) {
+        this.aiProvider = aiProvider;
+    }
 
     /**
      * Executa a requisição para a IA com suporte a Cache (Idempotência).
