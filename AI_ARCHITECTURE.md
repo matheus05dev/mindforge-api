@@ -28,38 +28,56 @@ A arquitetura de IA do MindForge é fundamentada na **orquestração inteligente
 O diagrama abaixo detalha o fluxo completo de uma requisição de análise de código, ilustrando a colaboração entre os componentes.
 
 ```mermaid
-sequenceDiagram
-    actor User
-    participant Controller
-    participant AIService
-    participant ContextServices as (Memory & Subject Services)
-    participant PromptEngine
-    participant AIOrchestrator as (AI Orchestrator & Providers)
-    participant Database
+flowchart TD
+    Start(["Requisição do Usuário"]) --> Router{"1. Roteador de Tarefas"}
 
-    User->>+Controller: 1. POST /api/ai/analyze/code
-    Controller->>+AIService: 2. analyzeCode(request)
+    Router -- "Análise de Código" --> CodeAnalysis["Preparar Análise de Código"]
+    Router -- "Review de Portfólio" --> PortfolioReview["Preparar Review de Portfólio"]
+    Router -- "Product Thinking" --> ProductThinking["Preparar Análise de Produto"]
+    Router -- "Edição de Conteúdo" --> ContentEdit["Preparar Edição de Texto"]
+    Router -- "OCR / Transcrição" --> OCR["Preparar Transcrição de Imagem"]
+    Router -- "Pergunta Genérica" --> Generic["Preparar Resposta Genérica"]
+
+    subgraph "2. Motor de Contexto"
+        CodeAnalysis, PortfolioReview, ProductThinking, Generic --> FetchProfile["Buscar Perfil de Aprendizado (Memória)"]
+        CodeAnalysis, Generic --> FetchSubject["Buscar Nível de Proficiência (Domínio)"]
+        FetchProfile, FetchSubject --> ContextReady["Contexto Completo"]
+    end
+
+    subgraph "3. Motor de Prompt"
+        ContextReady --> PersonaSelector{"Selecionar Persona"}
     
-    AIService->>+ContextServices: 3. Get User Profile & Proficiency
-    ContextServices-->>-AIService: 4. Return Context Data
+        PersonaSelector -- "Modo: MENTOR" --> PromptMentor["Construir Prompt: Mentor Didático"]
+        PersonaSelector -- "Modo: ANALYST" --> PromptAnalyst["Construir Prompt: Analista Sênior"]
+        PersonaSelector -- "Modo: DEBUG" --> PromptDebug["Construir Prompt: Debug Assistant"]
+        PersonaSelector -- "Modo: SOCRATIC" --> PromptSocratic["Construir Prompt: Tutor Socrático"]
+        
+        PortfolioReview --> PromptRecruiter["Construir Prompt: Tech Recruiter"]
+        ProductThinking --> PromptPM["Construir Prompt: Product Manager"]
+        ContentEdit --> PromptEditor["Construir Prompt: Editor de Texto"]
+        OCR --> PromptOCR["Construir Prompt: Transcrição"]
+    end
+
+    PromptMentor, PromptAnalyst, PromptDebug, PromptSocratic, PromptRecruiter, PromptPM, PromptEditor, PromptOCR --> AIProvider{"4. AI Provider (Abstração)"}
     
-    AIService->>+PromptEngine: 5. Build Prompt
-    PromptEngine-->>-AIService: 6. Return Optimized Prompt
+    subgraph "5. APIs Externas"
+        AIProvider --> GeminiAPI["Google Gemini API"]
+        AIProvider --> GroqAPI["Groq API"]
+    end
+
+    GeminiAPI --> AIProvider
+    GroqAPI --> AIProvider
     
-    AIService->>+AIOrchestrator: 7. Execute Task (Prompt, Model Hint)
-    AIOrchestrator-->>-AIService: 8. Return AIProviderResponse
+    AIProvider --> ResponseProcessor["6. Processar Resposta"]
+
+    ResponseProcessor --> UserResponse(["Retornar ao Usuário"])
+    ResponseProcessor -.-> AsyncMemory{"7. Ciclo de Memória (Async)"}
     
-    AIService->>+Database: 9. Save ChatMessage
-    Database-->>-AIService: 
-    
-    AIService-->>-Controller: 10. Return Response
-    Controller-->>-User: 11. Show Analysis
-    
-    par "Async Memory Cycle"
-        AIService-)+AIOrchestrator: 12. Update Memory (Meta-Prompt)
-        AIOrchestrator-)-AIService: 13. Return Updated Profile (JSON)
-        AIService-)+Database: 14. Save Updated User Profile
-        Database-)-AIService: 
+    subgraph "Ciclo de Aprendizado"
+        AsyncMemory --> MetaPrompt["Construir Meta-Prompt de Análise"]
+        MetaPrompt --> AIProviderMemory["AI Provider"]
+        AIProviderMemory --> GeminiAPIMemory["Google Gemini API"]
+        GeminiAPIMemory --> UpdateProfile["Atualizar Perfil do Usuário no DB"]
     end
 ```
 
@@ -71,26 +89,26 @@ O ciclo de memória é o que permite à IA evoluir de uma ferramenta de pergunta
 
 ```mermaid
 sequenceDiagram
-    participant AIService
-    participant MemoryService
-    participant AIProvider
-    participant Database
+    participant AIS as AIService
+    participant MS as MemoryService
+    participant AIP as AIProvider
+    participant DB as Database
 
-    Note over AIService: Requisição principal já foi respondida.
-    AIService->>+MemoryService: 1. updateUserProfile() [@Async]
+    Note over AIS: Requisição principal já foi respondida.
+    AIS->>+MS: 1. updateUserProfile() [@Async]
     
-    MemoryService->>+Database: 2. Get current UserProfileAI (JSON)
-    Database-->>-MemoryService: 3. Return current profile
+    MS->>+DB: 2. Get current UserProfileAI (JSON)
+    DB-->>-MS: 3. Return current profile
     
-    MemoryService->>MemoryService: 4. Build Meta-Prompt (conversation history + current profile)
+    MS->>MS: 4. Build Meta-Prompt (conversation history + current profile)
     
-    MemoryService->>+AIProvider: 5. Execute Meta-Analysis Task
-    AIProvider-->>-MemoryService: 6. Return updated profile (JSON)
+    MS->>+AIP: 5. Execute Meta-Analysis Task
+    AIP-->>-MS: 6. Return updated profile (JSON)
     
-    MemoryService->>+Database: 7. Persist new UserProfileAI
-    Database-->>-MemoryService: 
+    MS->>+DB: 7. Persist new UserProfileAI
+    DB-->>-MS: 
     
-    MemoryService-->>-AIService: 
+    MS-->>-AIS: 
 ```
 
 -   **O Meta-Prompt:** A chave para este ciclo é o "prompt sobre o prompt". É uma instrução para a IA analisar a interação e seu próprio estado anterior para gerar um novo estado.
