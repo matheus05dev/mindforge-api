@@ -1,135 +1,111 @@
-# Arquitetura do Módulo de Inteligência Artificial
+# Whitepaper da Arquitetura de IA do MindForge
 
-Este documento detalha o funcionamento interno do "cérebro" do MindForge. A inteligência da plataforma não reside no modelo de IA em si, mas na **orquestração sofisticada** e na **engenharia de prompt contextual** realizadas pela API Java. O sistema foi projetado para transformar modelos de linguagem genéricos em um conjunto de **especialistas sob demanda**.
+## 1. Filosofia e Decisões Arquiteturais Chave
 
-## Fluxo de Decisão e Processamento da IA
+A arquitetura de IA do MindForge é fundamentada na **orquestração inteligente** em vez da dependência de um único modelo de linguagem. As seguintes decisões de design foram cruciais para alcançar um sistema flexível, contextual e robusto.
 
-O diagrama abaixo ilustra como o `AIService` orquestra cada requisição, desde a seleção da personalidade até o ciclo de aprendizado contínuo.
+### Decisão 1: Orquestração em Java vs. Microserviço em Python
+-   **Escolha:** Manter a lógica de IA dentro do monólito modular Java/Spring Boot.
+-   **Justificativa:** Para o estágio atual do projeto, a complexidade de gerenciar um microserviço separado (deployment, comunicação inter-serviços, latência de rede) superaria os benefícios. A orquestração em Java simplifica a infraestrutura e permite que a lógica de IA acesse diretamente os serviços de domínio e o banco de dados para coletar contexto, resultando em menor latência e maior coesão de dados.
+-   **Trade-off:** Abre-se mão do acesso direto ao ecossistema de bibliotecas de IA do Python (ex: LangChain, LlamaIndex). Este trade-off é mitigado pela implementação de padrões de design sólidos em Java que replicam a funcionalidade necessária.
+
+### Decisão 2: Padrão Strategy para Provedores de IA (`AIProvider`)
+-   **Escolha:** Abstrair a comunicação com as APIs de IA através da interface `AIProvider`.
+-   **Justificativa:** Evita o acoplamento forte com um fornecedor específico (ex: Google, Groq). Isso torna o sistema **agnóstico ao provedor**, permitindo:
+    1.  **Flexibilidade:** Trocar ou adicionar novos modelos de IA (ex: Anthropic, OpenAI) com impacto mínimo, implementando apenas uma nova classe `Provider`.
+    2.  **Otimização:** Usar diferentes provedores para diferentes tarefas (ex: Gemini para multimodalidade, Groq para baixa latência), otimizando custo e performance.
+-   **Trade-off:** Adiciona uma camada de abstração que, embora pequena, aumenta a complexidade inicial do código.
+
+### Decisão 3: Ciclo de Memória Assíncrono
+-   **Escolha:** Executar a lógica de atualização da memória da IA (`MemoryService`) em uma thread separada (`@Async`).
+-   **Justificativa:** A experiência do usuário não deve ser penalizada pela "inteligência" do sistema. A resposta à requisição principal do usuário é retornada com a menor latência possível. O processo de "aprendizado" da IA, que envolve uma chamada extra à API, ocorre em background, sem bloquear a thread principal.
+-   **Trade-off:** A memória não é atualizada em tempo real, o que significa que o aprendizado de uma interação só estará disponível para a *próxima* requisição. Para o caso de uso de um mentor, essa consistência eventual é perfeitamente aceitável.
+
+---
+
+## 2. Arquitetura Dinâmica: A Anatomia de uma Requisição
+
+O diagrama abaixo detalha o fluxo completo de uma requisição de análise de código, ilustrando a colaboração entre os componentes.
 
 ```mermaid
-flowchart TD
-    Start([Requisição do Usuário]) --> Router{1. Roteador de Tarefas}
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant API as MindForge API
+    participant GitHub
+    participant AIProviders as AI Providers
 
-    %% Roteamento de Tarefas
-    Router -- "Análise de Código" --> CodeAnalysis[Preparar Análise de Código]
-    Router -- "Review de Portfólio" --> PortfolioReview[Preparar Review de Portfólio]
-    Router -- "Product Thinking" --> ProductThinking[Preparar Análise de Produto]
-    Router -- "Edição de Conteúdo" --> ContentEdit[Preparar Edição de Texto]
-    Router -- "OCR / Transcrição" --> OCR[Preparar Transcrição de Imagem]
-    Router -- "Pergunta Genérica" --> Generic[Preparar Resposta Genérica]
-
-    %% Coleta de Contexto (Comum a quase todos)
-    subgraph ContextEngine [2. Motor de Contexto]
-        CodeAnalysis & PortfolioReview & ProductThinking & Generic --> FetchProfile[Buscar Perfil de Aprendizado (Memória)]
-        CodeAnalysis & Generic --> FetchSubject[Buscar Nível de Proficiência (Domínio)]
-        FetchProfile & FetchSubject --> ContextReady[Contexto Completo]
-    end
-
-    %% Seleção de Persona (Engenharia de Prompt)
-    subgraph PromptEngine [3. Motor de Prompt]
-        ContextReady --> PersonaSelector{Selecionar Persona}
+    User->>+FE: 1. Clica em "Analisar Arquivo do GitHub"
+    FE->>+API: 2. POST /api/ai/analyze/github-file
     
-        PersonaSelector -- "Modo: MENTOR" --> PromptMentor[Construir Prompt: Mentor Didático]
-        PersonaSelector -- "Modo: ANALYST" --> PromptAnalyst[Construir Prompt: Analista Sênior]
-        PersonaSelector -- "Modo: DEBUG" --> PromptDebug[Construir Prompt: Debug Assistant]
-        PersonaSelector -- "Modo: SOCRATIC" --> PromptSocratic[Construir Prompt: Tutor Socrático]
-        
-        PortfolioReview --> PromptRecruiter[Construir Prompt: Tech Recruiter]
-        ProductThinking --> PromptPM[Construir Prompt: Product Manager]
-        ContentEdit --> PromptEditor[Construir Prompt: Editor de Texto]
-        OCR --> PromptOCR[Construir Prompt: Transcrição]
-    end
-
-    %% Execução
-    PromptMentor & PromptAnalyst & PromptDebug & PromptSocratic & PromptRecruiter & PromptPM & PromptEditor & PromptOCR --> AIProvider[4. AI Provider (Abstração)]
+    API->>API: 3. Busca Token de Integração e URL no DB
+    API->>+GitHub: 4. GET /repos/{owner}/{repo}/contents/{path}
+    GitHub-->>-API: 5. Retorna conteúdo do arquivo
     
-    subgraph "5. APIs Externas"
-        AIProvider --> GeminiAPI[Google Gemini API]
-        AIProvider --> GroqAPI[Groq API]
-    end
-
-    GeminiAPI --> AIProvider
-    GroqAPI --> AIProvider
+    API->>API: 6. Coleta contexto (Perfil, Nível, etc.)
+    API->>API: 7. Constrói o Prompt de Análise
     
-    AIProvider --> ResponseProcessor[6. Processar Resposta]
-
-    %% Ciclo de Memória
-    ResponseProcessor --> UserResponse([Retornar ao Usuário])
-    ResponseProcessor -.-> AsyncMemory{7. Ciclo de Memória (Async)}
+    API->>+AIProviders: 8. POST (Gemini ou Groq)
+    Note over API,AIProviders: Lógica de orquestração decide o provedor/modelo
+    AIProviders-->>-API: 9. Retorna o texto da análise
     
-    subgraph MemoryCycle [Ciclo de Aprendizado]
-        AsyncMemory --> MetaPrompt[Construir Meta-Prompt de Análise]
-        MetaPrompt --> AIProviderMemory[AI Provider]
-        AIProviderMemory --> GeminiAPIMemory[Google Gemini API]
-        GeminiAPIMemory --> UpdateProfile[Atualizar Perfil do Usuário no DB]
+    API->>API: 10. Salva a conversa no DB
+    API-->>-FE: 11. Retorna a resposta da IA
+    FE-->>-User: 12. Exibe a análise
+
+    par "Ciclo de Memória Assíncrono"
+        API-)+AIProviders: 13. POST (Meta-Prompt e histórico)
+        AIProviders-)-API: 14. Retorna Perfil do Usuário em JSON
+        API-)+API: 15. Salva o perfil de usuário atualizado no DB
     end
 ```
 
-## Explicação Detalhada dos Componentes
+---
 
-### 1. Roteador de Tarefas
--   **O que é:** O ponto de entrada do `AIService`. Cada endpoint no `AIController` chama um método específico no serviço.
--   **Como atua:** Funciona como um `switch` inteligente. Ele identifica a **intenção** do usuário com base no endpoint que foi chamado (ex: `POST /api/ai/review/portfolio` significa que a intenção é "revisar um portfólio"). Isso permite que o sistema prepare um fluxo de processamento especializado para cada tipo de tarefa.
+## 3. Deep Dive: O Ciclo de Memória Assíncrono
 
-### 2. Motor de Contexto
--   **O que é:** Antes de construir a pergunta para a IA, o sistema coleta informações cruciais para enriquecer a interação.
--   **Como atua:** Ele busca dados de duas fontes principais:
-    1.  **Contexto de Domínio:** Informações sobre o "aqui e agora", como o nível de proficiência (`ProficiencyLevel`) do usuário em um `Subject` específico.
-    2.  **Contexto de Memória:** Informações sobre o histórico do usuário, buscando no `MemoryService` o `UserProfileAI` para entender seus pontos fortes e fracos já identificados em interações passadas.
--   **Por que é importante?** Sem contexto, a IA daria uma resposta genérica. Com contexto, ela pode adaptar a complexidade da resposta ao nível do usuário e focar nos seus gaps de conhecimento específicos.
+O ciclo de memória é o que permite à IA evoluir de uma ferramenta de pergunta-resposta para um mentor que aprende. O diagrama abaixo foca exclusivamente neste processo.
 
-### 3. Motor de Prompt (Engenharia de Prompt)
--   **O que é:** O coração da inteligência do MindForge. Esta camada é responsável por traduzir a intenção do usuário e o contexto coletado em um **prompt detalhado e otimizado** para o modelo de linguagem.
--   **Como atua:** Ele utiliza um conjunto de "receitas de prompt" (os métodos `build...Prompt`), onde cada receita aplica técnicas de engenharia de prompt:
-    -   **Atribuição de Persona:** Define o papel que a IA deve assumir (`"Aja como um Tech Recruiter..."`).
-    -   **Instrução de Tarefa:** Descreve a tarefa de forma inequívoca (`"Sua tarefa é analisar o README..."`).
-    -   **Instrução de Formato:** Comanda o formato da saída (`"Forneça um feedback estruturado em 4 seções, usando Markdown..."`), o que é essencial para que a resposta possa ser processada pela aplicação.
--   **Por que é importante?** É aqui que um modelo de IA genérico é transformado em um conjunto de especialistas (Mentor, Analista, Agile Coach, etc.), garantindo que a resposta seja relevante, estruturada e de alta qualidade.
+```mermaid
+sequenceDiagram
+    participant AIService
+    participant MemoryService
+    participant AIProvider
+    participant Database
 
-### 4. AI Provider (Camada de Abstração)
--   **O que é:** Uma implementação do Padrão de Projeto Strategy. O `AIService` não sabe com qual IA está falando; ele apenas se comunica com a interface `AIProvider`.
--   **Como atua:** Existem múltiplas implementações concretas (`GeminiProvider`, `GroqProvider`). Cada uma recebe um `AIProviderRequest` genérico e o traduz para o formato específico que sua respectiva API espera. O sistema pode escolher dinamicamente qual provedor usar.
--   **Por que é importante?** Garante a **flexibilidade e resiliência** do sistema. Se amanhã quisermos usar o modelo da OpenAI para uma tarefa, basta criar um `OpenAiProvider`. Se um provedor estiver indisponível, o sistema pode, em alguns cenários, usar outro.
+    Note over AIService: Requisição principal já foi respondida.
+    AIService->>+MemoryService: 1. updateUserProfile() [@Async]
+    
+    MemoryService->>+Database: 2. Get current UserProfileAI (JSON)
+    Database-->>-MemoryService: 3. Return current profile
+    
+    MemoryService->>MemoryService: 4. Build Meta-Prompt (conversation history + current profile)
+    
+    MemoryService->>+AIProvider: 5. Execute Meta-Analysis Task
+    AIProvider-->>-MemoryService: 6. Return updated profile (JSON)
+    
+    MemoryService->>+Database: 7. Persist new UserProfileAI
+    Database-->>-MemoryService: 
+    
+    MemoryService-->>-AIService: 
+```
 
-### 5. APIs Externas (Google Gemini e Groq)
--   **O que são:** Os modelos de linguagem de grande escala (LLM) que executam a inferência.
--   **Provedores Atuais:**
-    -   **Google Gemini:** Um modelo robusto e versátil.
-    -   **Groq:** Um provedor conhecido por sua alta velocidade de inferência, que disponibiliza diversos modelos open-source (como Llama, Qwen, etc.).
--   **Por que é importante?** São os "motores" brutos. Nossa aplicação fornece o "chassi", o "volante" e o "GPS" (o prompt) para que a potência dos motores seja usada de forma útil e direcionada.
+-   **O Meta-Prompt:** A chave para este ciclo é o "prompt sobre o prompt". É uma instrução para a IA analisar a interação e seu próprio estado anterior para gerar um novo estado.
+    > **Exemplo de Meta-Prompt:** `"Analise a conversa a seguir e o perfil JSON existente. O usuário demonstrou entendimento de 'SOLID' mas dificuldade com 'Java Streams'. Retorne um NOVO perfil JSON atualizado com esses aprendizados. Mantenha o formato JSON."`
+-   **Impacto:** Este mecanismo cria um ciclo de feedback positivo, onde a IA se torna progressivamente mais ciente do contexto do usuário, resultando em interações futuras mais ricas e personalizadas.
 
-### 6. Orquestração de Provedores e Modelos
--   **O que é:** Uma camada de inteligência adicional que decide qual provedor e qual modelo usar para uma determinada tarefa.
--   **Como atua:** O `GroqOrchestratorService` é um exemplo dessa lógica. Ele permite:
-    1.  **Seleção de Modelo:** Escolher um modelo específico da Groq (ex: `VERSATILE` para tarefas complexas, `INSTANT` para tarefas rápidas).
-    2.  **Fallback Inteligente:** Tentar uma requisição com um modelo preferencial e, em caso de falha ou resposta insatisfatória, tentar novamente com um modelo de fallback.
--   **Por que é importante?** Isso aumenta a resiliência do sistema e otimiza custos e performance, usando o modelo certo para a tarefa certa.
+---
 
-### 7. Processador de Resposta
--   **O que é:** A lógica que recebe a resposta do `AIProvider`.
--   **Como atua:** Ele tem duas responsabilidades principais:
-    1.  **Persistir a Conversa:** Salva a pergunta do usuário e a resposta da IA no banco de dados como `ChatMessage`, criando um histórico auditável.
-    2.  **Retornar ao Usuário:** Envia a resposta para o `AIController`, que a devolve ao cliente.
+## 4. Resiliência e Tratamento de Falhas
 
-### 8. Deep Dive: O Módulo de Memória (`MemoryService`)
-O `MemoryService` eleva a IA de uma ferramenta de "pergunta e resposta" para um **mentor que aprende e se adapta**.
+Um sistema que depende de serviços de rede externos deve ser inerentemente resiliente. A arquitetura do MindForge incorpora múltiplos padrões de resiliência, principalmente na camada de `AIProvider`, utilizando a biblioteca **Resilience4j**.
 
--   **Objetivo:** Criar uma memória persistente sobre o perfil de aprendizado do usuário.
--   **Fluxo do Ciclo de Memória (Meta-Análise):**
-    1.  Após uma interação, o `MemoryService` é chamado de forma assíncrona (`@Async`).
-    2.  Ele usa o `AIProvider` para fazer uma **"pergunta a si mesmo"**, enviando o histórico da conversa com um **meta-prompt** que instrui a IA a analisar a interação e extrair um perfil atualizado do usuário em formato JSON.
-    3.  A IA retorna o JSON, que é salvo na entidade `UserProfileAI`, enriquecendo o contexto para a próxima interação.
+-   **Circuit Breaker:** Cada implementação de `AIProvider` (ex: `GroqProvider`) é anotada com `@CircuitBreaker`. Se um provedor de IA começar a falhar repetidamente (ex: API fora do ar), o circuito "abre" e as chamadas subsequentes falham imediatamente, sem sequer tentar a conexão de rede. Isso previne que a aplicação gaste recursos em um serviço sabidamente indisponível. Após um tempo, o circuito tenta fechar com uma chamada de teste.
+-   **Retry:** A anotação `@Retry` permite que uma chamada falha seja automaticamente tentada novamente algumas vezes. Isso é útil para falhas transitórias de rede. Se a primeira chamada falhar, o sistema espera um intervalo configurado e tenta de novo, até um número máximo de tentativas.
+-   **Rate Limiter:** A anotação `@RateLimiter` controla o número de chamadas por segundo que podem ser feitas para a API externa. Isso é crucial para não exceder os limites de uso impostos pelos provedores de IA e evitar custos inesperados ou bloqueios de API.
+-   **Time Limiter:** A anotação `@TimeLimiter` define um tempo máximo de espera para a resposta da API. Se a API demorar mais do que o esperado para responder, a chamada é interrompida. Isso evita que threads fiquem presas indefinidamente, aguardando uma resposta que pode nunca chegar.
+-   **Fallback de Orquestração:** Além da resiliência a nível de chamada, o `GroqOrchestratorService` implementa um fallback a nível de negócio. Se a chamada ao modelo primário (`VERSATILE`) falhar por qualquer motivo (incluindo um circuito aberto), a lógica de orquestração captura a falha e dispara uma nova chamada para o modelo secundário (`INSTANT`), garantindo a continuidade do serviço para o usuário.
 
-### 9. A IA como um Agente Integrado no Ecossistema MindForge
-A arquitetura foi projetada para que a IA evolua de uma ferramenta reativa para um **agente proativo e onipresente**.
+## 5. Conclusão
 
--   **Análise de Conteúdo Passiva:** A IA pode analisar o conteúdo que o usuário produz para inferir seu nível de conhecimento e sugerir atualizações no seu perfil.
--   **Assistência Ativa e Proativa (Visão de Futuro):** A IA poderá **iniciar ações** com base em eventos do sistema, como criar um item de revisão para o usuário após ele completar várias tarefas sobre um mesmo tema.
-
-### Conclusão
-
-A arquitetura do MindForge permite que a IA atue em três níveis:
-1.  **Reativo:** Responde a perguntas diretas com personalidades e contexto.
-2.  **Analítico:** Analisa passivamente o conteúdo do usuário para inferir conhecimento e manter o perfil atualizado.
-3.  **Proativo (Visão de Futuro):** Inicia ações e sugestões com base em eventos do sistema, agindo como um verdadeiro assistente que antecipa as necessidades do usuário.
-    A flexibilidade de provedores e a orquestração de modelos garantem que o sistema possa sempre usar a melhor ferramenta para cada tarefa, de forma resiliente e eficiente.
+A arquitetura de IA do MindForge é um exemplo de como a engenharia de software pragmática pode ser usada para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design, como a orquestração em Java, o padrão Strategy, o ciclo de memória assíncrono e a implementação de múltiplos padrões de resiliência, resultam em um sistema que é muito mais do que um simples cliente de API. É uma plataforma que agrega valor real ao transformar modelos de linguagem genéricos em ferramentas de aprendizado contextuais e personalizadas, com a flexibilidade de evoluir e se adaptar ao futuro do cenário de IA.
