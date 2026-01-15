@@ -1,5 +1,6 @@
 package com.matheusdev.mindforge.kanban.service;
 
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.kanban.dto.KanbanColumnRequest;
 import com.matheusdev.mindforge.kanban.dto.KanbanColumnResponse;
 import com.matheusdev.mindforge.kanban.dto.KanbanTaskRequest;
@@ -11,8 +12,8 @@ import com.matheusdev.mindforge.kanban.repository.KanbanColumnRepository;
 import com.matheusdev.mindforge.kanban.repository.KanbanTaskRepository;
 import com.matheusdev.mindforge.project.model.Project;
 import com.matheusdev.mindforge.project.repository.ProjectRepository;
-import com.matheusdev.mindforge.study.subject.model.Subject; // Corrected import
-import com.matheusdev.mindforge.study.subject.repository.SubjectRepository; // Corrected import
+import com.matheusdev.mindforge.study.subject.model.Subject;
+import com.matheusdev.mindforge.study.subject.repository.SubjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,18 +45,18 @@ public class KanbanService {
     @Transactional
     public KanbanTaskResponse createTask(Long columnId, KanbanTaskRequest request) {
         KanbanColumn column = columnRepository.findById(columnId)
-                .orElseThrow(() -> new RuntimeException("Column not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Coluna do Kanban não encontrada com o id: " + columnId));
 
         Subject subject = null;
         if (request.getSubjectId() != null) {
             subject = subjectRepository.findById(request.getSubjectId())
-                    .orElseThrow(() -> new RuntimeException("Subject not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + request.getSubjectId()));
         }
 
         Project project = null;
         if (request.getProjectId() != null) {
             project = projectRepository.findById(request.getProjectId())
-                    .orElseThrow(() -> new RuntimeException("Project not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + request.getProjectId()));
         }
 
         KanbanTask task = mapper.toEntity(request, column, subject, project);
@@ -65,9 +66,9 @@ public class KanbanService {
     @Transactional
     public KanbanTaskResponse moveTask(Long taskId, Long targetColumnId) {
         KanbanTask task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + taskId));
         KanbanColumn targetColumn = columnRepository.findById(targetColumnId)
-                .orElseThrow(() -> new RuntimeException("Target column not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Coluna de destino do Kanban não encontrada com o id: " + targetColumnId));
         
         task.setColumn(targetColumn);
         return mapper.toResponse(taskRepository.save(task));
@@ -76,26 +77,32 @@ public class KanbanService {
     @Transactional
     public KanbanTaskResponse updateTask(Long taskId, KanbanTaskRequest request) {
         KanbanTask task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + taskId));
         
         mapper.updateTaskFromRequest(request, task);
         return mapper.toResponse(taskRepository.save(task));
     }
 
     public void deleteTask(Long taskId) {
+        if (!taskRepository.existsById(taskId)) {
+            throw new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + taskId);
+        }
         taskRepository.deleteById(taskId);
     }
 
     @Transactional
     public KanbanColumnResponse updateColumn(Long columnId, KanbanColumnRequest request) {
         KanbanColumn column = columnRepository.findById(columnId)
-                .orElseThrow(() -> new RuntimeException("Column not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Coluna do Kanban não encontrada com o id: " + columnId));
         
         mapper.updateColumnFromRequest(request, column);
         return mapper.toResponse(columnRepository.save(column));
     }
 
     public void deleteColumn(Long columnId) {
+        if (!columnRepository.existsById(columnId)) {
+            throw new ResourceNotFoundException("Coluna do Kanban não encontrada com o id: " + columnId);
+        }
         columnRepository.deleteById(columnId);
     }
 }

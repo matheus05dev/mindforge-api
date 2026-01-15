@@ -1,5 +1,6 @@
 package com.matheusdev.mindforge.workspace.service;
 
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.workspace.model.Workspace;
 import com.matheusdev.mindforge.workspace.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +21,7 @@ public class WorkspaceService {
 
     public Workspace findById(Long id) {
         return workspaceRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Workspace not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace não encontrado com o id: " + id));
     }
 
     public Workspace create(Workspace workspace) {

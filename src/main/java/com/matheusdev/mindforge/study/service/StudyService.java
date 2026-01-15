@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.study.service;
 
-
+import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.study.dto.StudySessionRequest;
 import com.matheusdev.mindforge.study.dto.StudySessionResponse;
 import com.matheusdev.mindforge.study.subject.dto.SubjectRequest;
@@ -33,7 +33,7 @@ public class StudyService {
 
     public SubjectResponse getSubjectById(Long subjectId) {
         Subject subject = subjectRepository.findById(subjectId)
-                .orElseThrow(() -> new RuntimeException("Subject not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
         return mapper.toResponse(subject);
     }
 
@@ -46,7 +46,7 @@ public class StudyService {
     @Transactional
     public SubjectResponse updateSubject(Long subjectId, SubjectRequest request) {
         Subject subject = subjectRepository.findById(subjectId)
-                .orElseThrow(() -> new RuntimeException("Subject not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
         
         mapper.updateSubjectFromRequest(request, subject);
         Subject updatedSubject = subjectRepository.save(subject);
@@ -54,13 +54,16 @@ public class StudyService {
     }
 
     public void deleteSubject(Long subjectId) {
+        if (!subjectRepository.existsById(subjectId)) {
+            throw new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId);
+        }
         subjectRepository.deleteById(subjectId);
     }
 
     @Transactional
     public StudySessionResponse logSession(Long subjectId, StudySessionRequest request) {
         Subject subject = subjectRepository.findById(subjectId)
-                .orElseThrow(() -> new RuntimeException("Subject not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
 
         StudySession session = mapper.toEntity(request);
         session.setSubject(subject);
@@ -72,7 +75,7 @@ public class StudyService {
     @Transactional
     public StudySessionResponse updateSession(Long sessionId, StudySessionRequest request) {
         StudySession session = studySessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId));
         
         mapper.updateSessionFromRequest(request, session);
         StudySession updatedSession = studySessionRepository.save(session);
@@ -80,6 +83,9 @@ public class StudyService {
     }
 
     public void deleteSession(Long sessionId) {
+        if (!studySessionRepository.existsById(sessionId)) {
+            throw new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId);
+        }
         studySessionRepository.deleteById(sessionId);
     }
 }

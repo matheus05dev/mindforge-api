@@ -13,4 +13,7 @@ public class GitHubAccessTokenResponse {
 
     @JsonProperty("token_type")
     private String tokenType;
+
+    @JsonProperty("refresh_token")
+    private String refreshToken;
 }
