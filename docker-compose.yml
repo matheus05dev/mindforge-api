@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindforge-db
+    environment:
+      POSTGRES_DB: mindforge
+      POSTGRES_USER: mindforge_user
+      POSTGRES_PASSWORD: mindforge_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
