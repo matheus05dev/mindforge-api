@@ -19,6 +19,14 @@ public class UserProfileAI {
     @Column(columnDefinition = "TEXT")
     private String structuredProfile; // JSON com dados estruturados (pontos fortes, fracos, etc.)
 
+    @Enumerated(EnumType.STRING)
+    private LearningStyle learningStyle = LearningStyle.PRACTICAL; // Default
+
+    @Enumerated(EnumType.STRING)
+    private CommunicationTone communicationTone = CommunicationTone.ENCOURAGING; // Default
+
+    private String preferredModel; // Ex: "gpt-4", "claude-3-opus", ou null para automático
+
     private LocalDateTime lastUpdatedAt;
 
     @PreUpdate
