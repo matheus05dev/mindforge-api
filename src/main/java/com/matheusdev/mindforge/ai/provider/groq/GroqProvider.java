@@ -84,7 +84,7 @@ public class GroqProvider implements AIProvider {
             GroqRequest groqRequest = new GroqRequest(
                     selectedModel.getModelName(),
                     messages,
-                    true,
+                    false, // Stream desativado para receber JSON completo
                     1.0,
                     selectedModel.getMaxTokens(),
                     1.0,

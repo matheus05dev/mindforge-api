@@ -69,18 +69,22 @@ public class AIContextService {
         return systemMessage.toString();
     }
 
-    public String selectModel(UserProfileAI profile, boolean isComplexTask) {
+    public String selectModel(UserProfileAI profile, boolean isComplexTask, String provider) {
         // Se o usuário tem uma preferência explícita, respeite-a
         if (profile.getPreferredModel() != null && !profile.getPreferredModel().isEmpty()) {
             return profile.getPreferredModel();
         }
 
-        // Lógica de seleção automática (exemplo simplificado)
-        // Em um cenário real, isso mapearia para nomes de modelos do provedor (ex: OpenAI, Anthropic)
+        if ("gemini".equalsIgnoreCase(provider)) {
+            // Para Gemini, o modelo é definido na URL, mas podemos retornar um identificador se necessário no futuro
+            return "gemini-pro";
+        }
+
+        // Lógica de seleção automática para Groq (padrão)
         if (isComplexTask) {
-            return "gpt-4-turbo"; // Ou equivalente de alta capacidade
+            return "VERSATILE"; // Mapeia para llama-3.3-70b-versatile
         } else {
-            return "gpt-3.5-turbo"; // Ou modelo mais rápido/barato
+            return "INSTANT"; // Mapeia para llama-3.1-8b-instant
         }
     }
 }

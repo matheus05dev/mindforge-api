@@ -9,5 +9,6 @@ public class GenericAnalysisRequest {
     private String question;
     private Long subjectId;
     private Long projectId;
+    private Long documentId; // Adicionado para suportar leitura de documentos
     private String provider; // "gemini", "groq" ou nulo para "mindforge" (padrão)
 }
