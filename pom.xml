@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.9</version>
+		<version>3.3.5</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.matheusdev</groupId>
@@ -67,8 +67,8 @@
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-			<!-- bumped to a newer release to match newer Spring Frameworks and avoid ControllerAdviceBean signature mismatches -->
-			<version>2.1.0</version>
+			<!-- Updated to version compatible with Spring Boot 3.3.x / Spring Framework 6.1.x to avoid ControllerAdviceBean signature mismatches -->
+			<version>2.6.0</version>
 		</dependency>
 
 		<dependency>

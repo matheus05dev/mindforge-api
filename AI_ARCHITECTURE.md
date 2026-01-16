@@ -1,31 +1,86 @@
-# Arquitetura Detalhada do Módulo de IA
+# Arquitetura Detalhada do Módulo de Inteligência Artificial
 
-## 1. Filosofia e Decisões Arquiteturais Chave
+## Índice
 
-A arquitetura de IA do MindForge é fundamentada na **orquestração inteligente** em vez da dependência de um único modelo de linguagem. As seguintes decisões de design foram cruciais para alcançar um sistema flexível, contextual e robusto.
-
-### Decisão 1: Orquestração em Java vs. Microserviço em Python
--   **Escolha:** Manter a lógica de IA dentro do monólito modular Java/Spring Boot.
--   **Justificativa:** Para o estágio atual do projeto, a complexidade de gerenciar um microserviço separado (deployment, comunicação inter-serviços, latência de rede) superaria os benefícios. A orquestração em Java simplifica a infraestrutura e permite que a lógica de IA acesse diretamente os serviços de domínio e o banco de dados para coletar contexto, resultando em menor latência e maior coesão de dados.
--   **Trade-off:** Abre-se mão do acesso direto ao ecossistema de bibliotecas de IA do Python (ex: LangChain, LlamaIndex). Este trade-off é mitigado pela implementação de padrões de design sólidos em Java que replicam a funcionalidade necessária.
-
-### Decisão 2: Padrão Strategy para Provedores de IA (`AIProvider`)
--   **Escolha:** Abstrair a comunicação com as APIs de IA através da interface `AIProvider`.
--   **Justificativa:** Evita o acoplamento forte com um fornecedor específico (ex: Google, Groq). Isso torna o sistema **agnóstico ao provedor**, permitindo:
-    1.  **Flexibilidade:** Trocar ou adicionar novos modelos de IA (ex: Anthropic, OpenAI) com impacto mínimo, implementando apenas uma nova classe `Provider`.
-    2.  **Otimização:** Usar diferentes provedores para diferentes tarefas (ex: Gemini para multimodalidade, Groq para baixa latência), otimizando custo e performance.
--   **Trade-off:** Adiciona uma camada de abstração que, embora pequena, aumenta a complexidade inicial do código.
-
-### Decisão 3: Ciclo de Memória Assíncrono
--   **Escolha:** Executar a lógica de atualização da memória da IA (`MemoryService`) em uma thread separada (`@Async`).
--   **Justificativa:** A experiência do usuário não deve ser penalizada pela "inteligência" do sistema. A resposta à requisição principal do usuário é retornada com a menor latência possível. O processo de "aprendizado" da IA, que envolve uma chamada extra à API, ocorre em background, sem bloquear a thread principal.
--   **Trade-off:** A memória não é atualizada em tempo real, o que significa que o aprendizado de uma interação só estará disponível para a *próxima* requisição. Para o caso de uso de um mentor, essa consistência eventual é perfeitamente aceitável.
+1. [Visão Geral e Filosofia](#1-visão-geral-e-filosofia)
+2. [Decisões Arquiteturais Fundamentais](#2-decisões-arquiteturais-fundamentais)
+3. [Arquitetura Dinâmica: Fluxo de Requisições](#3-arquitetura-dinâmica-fluxo-de-requisições)
+4. [Ciclo de Memória Assíncrono](#4-ciclo-de-memória-assíncrono)
+5. [Resiliência e Tratamento de Falhas](#5-resiliência-e-tratamento-de-falhas)
+6. [Padrões de Engenharia de Prompt](#6-padrões-de-engenharia-de-prompt)
+7. [Orquestração Multi-Provider](#7-orquestração-multi-provider)
 
 ---
 
-## 2. Arquitetura Dinâmica: A Anatomia de uma Requisição
+## 1. Visão Geral e Filosofia
 
-O diagrama abaixo detalha o fluxo completo de uma requisição de análise de código, ilustrando a colaboração entre os componentes.
+A arquitetura de IA do MindForge é fundamentada no princípio de **orquestração inteligente** em vez de dependência exclusiva de um único modelo de linguagem. Esta abordagem permite:
+
+- **Flexibilidade**: Adaptação a diferentes tipos de tarefas e contextos
+- **Resiliência**: Continuidade de serviço mesmo em caso de falha de um provedor
+- **Otimização**: Uso otimizado de recursos (latência, custo, capacidade)
+- **Evolução**: Facilidade para integrar novos modelos e provedores
+
+A arquitetura foi projetada para transformar modelos de linguagem genéricos em **mentores especializados e contextualmente conscientes**, utilizando técnicas avançadas de engenharia de prompt e orquestração.
+
+---
+
+## 2. Decisões Arquiteturais Fundamentais
+
+### 2.1. Orquestração em Java vs. Microserviço em Python
+
+**Decisão**: Manter a lógica de IA dentro do monólito modular Java/Spring Boot.
+
+**Justificativa**:
+- **Coesão de Dados**: Acesso direto a serviços de domínio e banco de dados para coleta de contexto rico
+- **Baixa Latência**: Comunicação in-process elimina overhead de rede
+- **Simplicidade Operacional**: Redução de complexidade de infraestrutura e deployment
+- **Consistência Transacional**: Capacidade de participar em transações distribuídas quando necessário
+
+**Trade-offs**:
+- **Ecossistema Python**: Acesso limitado a bibliotecas especializadas (LangChain, LlamaIndex)
+- **Mitigação**: Implementação de padrões de design sólidos em Java que replicam funcionalidades essenciais
+
+### 2.2. Padrão Strategy para Provedores de IA
+
+**Decisão**: Abstrair a comunicação com APIs de IA através da interface `AIProvider`.
+
+**Justificativa**:
+O padrão Strategy torna o sistema **agnóstico ao provedor**, proporcionando:
+
+1. **Flexibilidade Extensível**
+   - Troca de provedores sem impacto na lógica de negócio
+   - Adição de novos provedores (Anthropic, OpenAI) com implementação mínima
+   - Isolamento de detalhes de implementação de cada provedor
+
+2. **Otimização Contextual**
+   - Seleção dinâmica de provedor baseada no tipo de tarefa
+   - Uso de Gemini para capacidades multimodais
+   - Uso de Groq para tarefas que exigem baixa latência
+   - Otimização de custo através de escolha inteligente
+
+**Trade-offs**:
+- **Complexidade Inicial**: Camada adicional de abstração requer design cuidadoso
+- **Manutenção**: Necessidade de manter contratos de interface consistentes
+
+### 2.3. Ciclo de Memória Assíncrono
+
+**Decisão**: Executar a atualização de memória da IA em thread separada (`@Async`).
+
+**Justificativa**:
+- **Latência Otimizada**: Resposta ao usuário não é penalizada pela "inteligência" do sistema
+- **Experiência do Usuário**: Feedback imediato enquanto o aprendizado ocorre em background
+- **Escalabilidade**: Processamento assíncrono permite maior throughput
+
+**Trade-offs**:
+- **Consistência Eventual**: Aprendizado de uma interação disponível apenas na próxima requisição
+- **Aceitação**: Para o caso de uso de mentor, consistência eventual é perfeitamente aceitável
+
+---
+
+## 3. Arquitetura Dinâmica: Fluxo de Requisições
+
+O diagrama abaixo ilustra o fluxo completo de uma requisição de análise de código, demonstrando a colaboração entre todos os componentes do sistema.
 
 ```mermaid
 flowchart TD
@@ -93,11 +148,56 @@ flowchart TD
     end
 ```
 
+### 3.1. Fase 1: Roteamento de Tarefas
+
+O `AIService` atua como roteador principal, identificando o tipo de tarefa solicitada e delegando para o handler apropriado:
+
+- **Análise de Código**: Análise técnica detalhada com múltiplas personas
+- **Review de Portfólio**: Análise profissional de projetos para portfólio
+- **Product Thinking**: Análise estratégica de produto
+- **Edição de Conteúdo**: Manipulação e otimização de texto
+- **OCR/Transcrição**: Extração de texto de imagens
+- **Resposta Genérica**: Respostas contextuais gerais
+
+### 3.2. Fase 2: Motor de Contexto
+
+O `AIContextService` coleta e estrutura o contexto necessário para a requisição:
+
+- **Perfil de Aprendizado**: Dados do `MemoryService` sobre o histórico do usuário
+- **Nível de Proficiência**: Informações do domínio de estudos sobre o conhecimento do usuário
+- **Histórico de Conversas**: Contexto de interações anteriores
+- **Metadados**: Informações adicionais relevantes ao tipo de tarefa
+
+### 3.3. Fase 3: Motor de Prompt
+
+O `PromptBuilderService` constrói prompts especializados usando técnicas de engenharia de prompt:
+
+- **Atribuição de Persona**: Instruções para a IA assumir papéis específicos
+- **Injeção de Contexto**: Enriquecimento do prompt com dados coletados
+- **Instruções de Formato**: Especificação de formato de saída desejado
+- **Templates Especializados**: Prompts otimizados para cada tipo de tarefa
+
+### 3.4. Fase 4: Abstração de Provedor
+
+O `AIProvider` atua como camada de abstração que:
+
+- Oculta detalhes de implementação de cada provedor
+- Permite seleção dinâmica de provedor/modelo
+- Implementa padrões de resiliência (Circuit Breaker, Retry, etc.)
+- Normaliza respostas de diferentes provedores
+
+### 3.5. Fase 5: APIs Externas
+
+Integração com provedores externos:
+
+- **Google Gemini**: Para capacidades multimodais e análise complexa
+- **Groq**: Para tarefas que exigem baixa latência e alta throughput
+
 ---
 
-## 3. Deep Dive: O Ciclo de Memória Assíncrono
+## 4. Ciclo de Memória Assíncrono
 
-O ciclo de memória é o que permite à IA evoluir de uma ferramenta de pergunta-resposta para um mentor que aprende. O diagrama abaixo foca exclusivamente neste processo.
+O ciclo de memória é o mecanismo que permite à IA evoluir de uma ferramenta de pergunta-resposta para um **mentor que aprende continuamente**. O diagrama abaixo foca exclusivamente neste processo.
 
 ```mermaid
 sequenceDiagram
@@ -123,22 +223,491 @@ sequenceDiagram
     MS-->>-AIS: 
 ```
 
--   **O Meta-Prompt:** A chave para este ciclo é o "prompt sobre o prompt". É uma instrução para a IA analisar a interação e seu próprio estado anterior para gerar um novo estado.
-    > **Exemplo de Meta-Prompt:** `"Analise a conversa a seguir e o perfil JSON existente. O usuário demonstrou entendimento de 'SOLID' mas dificuldade com 'Java Streams'. Retorne um NOVO perfil JSON atualizado com esses aprendizados. Mantenha o formato JSON."`
--   **Impacto:** Este mecanismo cria um ciclo de feedback positivo, onde a IA se torna progressivamente mais ciente do contexto do usuário, resultando em interações futuras mais ricas e personalizadas.
+### 4.1. O Conceito de Meta-Prompt
+
+O **Meta-Prompt** é uma técnica avançada de engenharia de prompt onde a IA é instruída a analisar sua própria interação e estado anterior para gerar um novo estado atualizado.
+
+**Exemplo de Meta-Prompt**:
+```
+Analise a conversa a seguir e o perfil JSON existente. 
+O usuário demonstrou entendimento sólido de 'SOLID principles' 
+mas apresentou dificuldade com 'Java Streams API'. 
+Retorne um NOVO perfil JSON atualizado com esses aprendizados, 
+incluindo níveis de proficiência ajustados e tópicos sugeridos 
+para estudo futuro. Mantenha o formato JSON estritamente.
+```
+
+### 4.2. Estrutura do Perfil de Usuário
+
+O `UserProfileAI` armazena:
+
+- **Resumo Textual**: Descrição narrativa do perfil de aprendizado
+- **JSON Estruturado**: Dados estruturados sobre pontos fortes, fracos, interesses
+- **Histórico de Interações**: Referências a conversas anteriores
+- **Metadados**: Timestamps, versão do perfil, estatísticas
+
+### 4.3. Impacto no Sistema
+
+Este mecanismo cria um **ciclo de feedback positivo**:
+
+- A IA se torna progressivamente mais consciente do contexto do usuário
+- Respostas futuras são mais personalizadas e relevantes
+- O sistema evolui de ferramenta para mentor adaptativo
+- A experiência do usuário melhora continuamente
 
 ---
 
-## 4. Resiliência e Tratamento de Falhas
+## 5. Resiliência e Tratamento de Falhas
 
-Um sistema que depende de serviços de rede externos deve ser inerentemente resiliente. A arquitetura do MindForge incorpora múltiplos padrões de resiliência, principalmente na camada de `AIProvider`, utilizando a biblioteca **Resilience4j**.
+Um sistema que depende de serviços de rede externos deve ser inerentemente resiliente. A arquitetura do MindForge incorpora múltiplos padrões de resiliência utilizando a biblioteca **Resilience4j**, com configurações específicas para cada tipo de serviço.
 
--   **Circuit Breaker:** Cada implementação de `AIProvider` (ex: `GroqProvider`) é anotada com `@CircuitBreaker`. Se um provedor de IA começar a falhar repetidamente (ex: API fora do ar), o circuito "abre" e as chamadas subsequentes falham imediatamente, sem sequer tentar a conexão de rede. Isso previne que a aplicação gaste recursos em um serviço sabidamente indisponível. Após um tempo, o circuito tenta fechar com uma chamada de teste.
--   **Retry:** A anotação `@Retry` permite que uma chamada falha seja automaticamente tentada novamente algumas vezes. Isso é útil para falhas transitórias de rede. Se a primeira chamada falhar, o sistema espera um intervalo configurado e tenta de novo, até um número máximo de tentativas.
--   **Rate Limiter:** A anotação `@RateLimiter` controla o número de chamadas por segundo que podem ser feitas para a API externa. Isso é crucial para não exceder os limites de uso impostos pelos provedores de IA e evitar custos inesperados ou bloqueios de API.
--   **Time Limiter:** A anotação `@TimeLimiter` define um tempo máximo de espera para a resposta da API. Se a API demorar mais do que o esperado para responder, a chamada é interrompida. Isso evita que threads fiquem presas indefinidamente, aguardando uma resposta que pode nunca chegar.
--   **Fallback de Orquestração:** Além da resiliência a nível de chamada, o `GroqOrchestratorService` implementa um fallback a nível de negócio. Se a chamada ao modelo primário (`VERSATILE`) falhar por qualquer motivo (incluindo um circuito aberto), a lógica de orquestração captura a falha e dispara uma nova chamada para o modelo secundário (`INSTANT`), garantindo a continuidade do serviço para o usuário.
+### 5.1. Arquitetura de Resiliência
 
-## 5. Conclusão
+```mermaid
+flowchart TD
+    Request[Requisição de IA] --> CircuitBreaker{Circuit Breaker}
+    
+    CircuitBreaker -->|Fechado| RateLimiter{Rate Limiter}
+    CircuitBreaker -->|Aberto| Fallback[Fallback Handler]
+    CircuitBreaker -->|Half-Open| TestCall[Chamada de Teste]
+    
+    RateLimiter -->|Dentro do Limite| Retry{Retry}
+    RateLimiter -->|Excedido| Reject[Rejeita Requisição]
+    
+    Retry -->|Tentativa 1-3| TimeLimiter{Time Limiter}
+    Retry -->|Todas Falharam| CircuitBreaker
+    
+    TimeLimiter -->|Dentro do Timeout| API[API Externa<br/>Gemini/Groq]
+    TimeLimiter -->|Timeout| Retry
+    
+    API -->|Sucesso| Success[Resposta ao Usuário]
+    API -->|Falha| Retry
+    
+    TestCall -->|Sucesso| CircuitBreaker
+    TestCall -->|Falha| CircuitBreaker
+    
+    Fallback --> FallbackResponse[Resposta de Fallback<br/>ou Modelo Alternativo]
+```
 
-A arquitetura de IA do MindForge é um exemplo de como a engenharia de software pragmática pode ser usada para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design, como a orquestração em Java, o padrão Strategy, o ciclo de memória assíncrono e a implementação de múltiplos padrões de resiliência, resultam em um sistema que é muito mais do que um simples cliente de API. É uma plataforma que agrega valor real ao transformar modelos de linguagem genéricos em ferramentas de aprendizado contextuais e personalizadas, com a flexibilidade de evoluir e se adaptar ao futuro do cenário de IA.
+### 5.2. Configurações de Resiliência
+
+O sistema utiliza configurações centralizadas em `ResilienceConfig`:
+
+#### Instâncias de Resiliência
+
+- **`aiProvider`**: Configuração para provedores de IA (Gemini, Groq)
+- **`githubClient`**: Configuração para integração GitHub (futuro)
+
+#### Circuit Breaker
+
+**Configuração** (`aiProvider`):
+- **Failure Rate Threshold**: 50% (circuito abre quando 50% das chamadas falham)
+- **Sliding Window Size**: 10 chamadas (janela deslizante de 10 chamadas)
+- **Wait Duration in Open State**: 10 segundos (tempo antes de tentar recuperação)
+- **Half-Open State**: Permite 1 chamada de teste após timeout
+
+**Estados do Circuit Breaker**:
+```mermaid
+stateDiagram-v2
+    [*] --> Closed: Inicialização
+    Closed --> Open: Taxa de Falha > 50%
+    Open --> HalfOpen: Timeout (10s)
+    HalfOpen --> Closed: Chamada de Teste Bem-sucedida
+    HalfOpen --> Open: Chamada de Teste Falhou
+    Closed --> [*]: Shutdown
+```
+
+**Implementação**:
+```java
+@CircuitBreaker(name = ResilienceConfig.AI_PROVIDER_INSTANCE, fallbackMethod = "fallback")
+```
+
+**Benefícios**:
+- **Proteção contra Cascata**: Previne sobrecarga de sistema externo já falhando
+- **Economia de Recursos**: Não tenta chamadas sabidamente falhas
+- **Recuperação Automática**: Tenta recuperação após período configurado
+- **Fallback Inteligente**: Chama método de fallback quando circuito aberto
+
+#### Retry
+
+**Configuração** (`aiProvider`):
+- **Max Attempts**: 3 tentativas totais
+- **Wait Duration**: 500ms entre tentativas
+- **Retry Strategy**: Exponential Backoff (futuro)
+
+**Implementação**:
+```java
+@Retry(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
+```
+
+**Comportamento**:
+- Tentativa 1: Chamada inicial
+- Tentativa 2: Após 500ms em caso de falha
+- Tentativa 3: Após mais 500ms em caso de falha
+- Após 3 tentativas: Falha propagada ou fallback acionado
+
+**Benefícios**:
+- **Recuperação Automática**: Trata falhas transitórias de rede
+- **Redução de Falhas Percebidas**: Muitas falhas temporárias são resolvidas
+- **Transparência**: Tentativas automáticas sem intervenção do usuário
+
+### 5.2. Retry
+
+**Implementação**: Anotação `@Retry` em métodos críticos.
+
+**Configuração**:
+- Número máximo de tentativas
+- Intervalo exponencial entre tentativas
+- Exceções que devem ou não ser retentadas
+
+**Benefícios**:
+- Recuperação automática de falhas transitórias
+- Redução de falhas percebidas pelo usuário
+- Tratamento inteligente de problemas temporários de rede
+
+### 5.3. Rate Limiter
+
+**Implementação**: Anotação `@RateLimiter` em chamadas para APIs externas.
+
+**Configuração** (`aiProvider`):
+- **Limit Refresh Period**: 1 segundo (janela de tempo)
+- **Limit For Period**: 10 chamadas por segundo
+- **Timeout Duration**: 500ms (tempo máximo de espera por slot disponível)
+
+**Implementação**:
+```java
+@RateLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
+```
+
+**Comportamento**:
+- **Dentro do Limite**: Chamada processada imediatamente
+- **Limite Excedido**: Aguarda até 500ms por slot disponível
+- **Timeout**: Rejeita requisição após 500ms de espera
+
+**Limites por Segundo**:
+- **Máximo**: 10 chamadas/segundo para provedores de IA
+- **Janela Deslizante**: Renovação contínua a cada segundo
+- **Proteção**: Previne exceder limites de APIs externas
+
+**Benefícios**:
+- **Conformidade**: Respeita limites de rate das APIs externas
+- **Prevenção de Custos**: Evita custos inesperados por excesso de chamadas
+- **Proteção contra Bloqueios**: Previne bloqueios de API por rate limiting
+- **Fairness**: Distribuição equitativa de recursos entre requisições
+
+**Exemplo de Uso**:
+```java
+// Configuração permite 10 chamadas/segundo
+// Requisições 1-10: Processadas imediatamente
+// Requisição 11: Aguarda até 500ms por slot
+// Se nenhum slot disponível após 500ms: Rejeita
+```
+
+### 5.4. Time Limiter
+
+**Implementação**: Anotação `@TimeLimiter` com timeout configurável.
+
+**Configuração** (`aiProvider`):
+- **Timeout Duration**: 5 segundos (tempo máximo de espera por resposta)
+
+**Implementação**:
+```java
+@TimeLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
+```
+
+**Comportamento**:
+- **Dentro do Timeout**: Resposta retornada normalmente
+- **Timeout Excedido**: Chamada interrompida e exceção lançada
+- **Propagação**: Exceção propaga para camadas superiores ou fallback
+
+**Benefícios**:
+- **Prevenção de Threads Bloqueadas**: Threads não ficam aguardando indefinidamente
+- **Controle de Latência**: Garante resposta ou falha dentro de tempo definido
+- **Liberação de Recursos**: Threads liberadas para outras requisições
+- **Experiência do Usuário**: Timeout adequado evita esperas excessivas
+
+**Fluxo de Timeout**:
+```mermaid
+sequenceDiagram
+    participant Service as AIService
+    participant TimeLimiter as TimeLimiter
+    participant Provider as AIProvider
+    participant API as API Externa
+    
+    Service->>TimeLimiter: executeTask(request)
+    TimeLimiter->>Provider: Chamada com timeout de 5s
+    
+    alt Resposta em < 5s
+        Provider->>API: POST Request
+        API-->>Provider: Resposta
+        Provider-->>TimeLimiter: Resposta
+        TimeLimiter-->>Service: Sucesso
+    else Timeout > 5s
+        TimeLimiter->>Provider: Cancelar chamada
+        TimeLimiter-->>Service: TimeoutException
+        Service->>Service: Acionar Fallback
+    end
+```
+
+### 5.5. Fallback Strategy
+
+**Implementação**: Lógica de orquestração no `GroqOrchestratorService` e métodos de fallback em cada provider.
+
+**Comportamento**:
+- **Nível de Provider**: Cada `AIProvider` implementa método `fallback()` chamado quando Circuit Breaker abre
+- **Nível de Orquestração**: `GroqOrchestratorService` implementa fallback entre modelos (VERSATILE → INSTANT)
+- **Nível Global**: `AIOrchestratorService` pode rotear entre provedores (Gemini → Groq)
+
+**Fallback por Camada**:
+```mermaid
+flowchart TD
+    Request[Requisição de IA] --> AIOrch[AIOrchestratorService]
+    
+    AIOrch -->|Preferência: Gemini| GeminiProvider[GeminiProvider]
+    AIOrch -->|Preferência: Groq| GroqOrch[GroqOrchestratorService]
+    
+    GeminiProvider -->|Circuito Aberto| GeminiFallback[Fallback: Mensagem de Erro]
+    GeminiProvider -->|Sucesso| Response1[Resposta]
+    
+    GroqOrch -->|Tenta VERSATILE| GroqProvider[GroqProvider]
+    
+    GroqProvider -->|Circuito Aberto| GroqFallback[Fallback: Mensagem de Erro]
+    GroqProvider -->|Falha Modelo| GroqOrch
+    
+    GroqOrch -->|Fallback: INSTANT| GroqProvider2[GroqProvider<br/>Modelo: INSTANT]
+    GroqProvider2 -->|Sucesso| Response2[Resposta]
+    GroqProvider2 -->|Circuito Aberto| GroqFallback
+    
+    GeminiFallback --> FinalResponse[Resposta Final]
+    Response1 --> FinalResponse
+    Response2 --> FinalResponse
+    GroqFallback --> FinalResponse
+```
+
+**Benefícios**:
+- **Alta Disponibilidade**: Continuidade mesmo com falhas parciais de componentes
+- **Degradação Graciosa**: Usa alternativas disponíveis automaticamente
+- **Experiência do Usuário**: Resposta sempre fornecida, mesmo que simplificada
+- **Resiliência em Múltiplas Camadas**: Proteção em provider, orquestração e global
+
+### 5.6. Resumo das Configurações de Resiliência
+
+**Tabela de Configurações** (`aiProvider`):
+
+| Padrão | Configuração | Valor | Descrição |
+|--------|-------------|-------|-----------|
+| **Circuit Breaker** | Failure Rate Threshold | 50% | Taxa de falha para abrir circuito |
+| | Sliding Window Size | 10 | Janela de chamadas para cálculo |
+| | Wait Duration (Open State) | 10s | Tempo antes de tentar recuperação |
+| **Retry** | Max Attempts | 3 | Número máximo de tentativas |
+| | Wait Duration | 500ms | Intervalo entre tentativas |
+| **Rate Limiter** | Limit Refresh Period | 1s | Período de renovação do limite |
+| | Limit For Period | 10 | Chamadas máximas por período |
+| | Timeout Duration | 500ms | Tempo máximo de espera por slot |
+| **Time Limiter** | Timeout Duration | 5s | Tempo máximo de espera por resposta |
+
+**Instâncias de Resiliência**:
+- `aiProvider`: Provedores de IA (Gemini, Groq)
+- `githubClient`: Cliente GitHub (configuração futura)
+
+---
+
+## 6. Padrões de Engenharia de Prompt
+
+A eficácia do sistema depende criticamente da qualidade dos prompts. A arquitetura implementa vários padrões de engenharia de prompt:
+
+### 6.1. Persona Assignment
+
+Atribuição de papéis específicos à IA:
+- **Mentor**: Orientação didática e pedagógica
+- **Analista**: Análise técnica profunda
+- **Tutor Socrático**: Aprendizado guiado por perguntas
+- **Tech Recruiter**: Análise profissional de portfólio
+- **Product Manager**: Análise estratégica de produto
+
+### 6.2. Context Injection
+
+Enriquecimento de prompts com:
+- Perfil de aprendizado do usuário
+- Nível de proficiência em tópicos relevantes
+- Histórico de interações anteriores
+- Metadados contextuais
+
+### 6.3. Format Specification
+
+Instruções claras sobre formato de saída:
+- Markdown estruturado para análises
+- JSON para dados estruturados
+- Formatação específica para diferentes casos de uso
+
+### 6.4. Task Decomposition
+
+Quebra de tarefas complexas em subtarefas:
+- Análise estruturada por componentes
+- Feedback organizado por categoria
+- Sugestões priorizadas e categorizadas
+
+---
+
+## 7. Orquestração Multi-Provider e Múltiplos Agentes Groq
+
+O sistema implementa orquestração inteligente para selecionar o provedor/modelo mais adequado para cada tarefa, com suporte especial para múltiplos modelos através da API Groq.
+
+### 7.1. Critérios de Seleção
+
+- **Tipo de Tarefa**: Análise complexa vs. resposta rápida
+- **Requisitos de Modalidade**: Texto, imagem, multimodal
+- **Latência Esperada**: Baixa vs. tolerância a latência
+- **Capacidade do Modelo**: Tamanho de contexto, capacidade de raciocínio
+- **Custo-Benefício**: Balanceamento entre qualidade e custo
+
+### 7.2. Provedores Implementados
+
+#### Google Gemini
+- **Forças**: Multimodalidade, raciocínio complexo, análise profunda
+- **Uso**: Análise de código, OCR, análises estratégicas
+- **Latência**: Média-Alta
+- **Custo**: Variável
+- **Modelos Suportados**: Gemini Pro (via API)
+
+#### Groq - Múltiplos Agentes/Modelos
+
+O Groq Provider implementa **6 modelos especializados** que funcionam como agentes distintos, cada um otimizado para diferentes tipos de tarefas:
+
+```mermaid
+flowchart TD
+    GroqProvider[GroqProvider] --> ModelSelector{Seletor de Modelo}
+    
+    ModelSelector -->|Análise Complexa| VERSATILE[VERSATILE<br/>llama-3.3-70b-versatile<br/>1024 tokens<br/>Uso Geral Avançado]
+    ModelSelector -->|Resposta Rápida| INSTANT[INSTANT<br/>llama-3.1-8b-instant<br/>1024 tokens<br/>Baixa Latência]
+    ModelSelector -->|Contexto Grande| GPT_OSS[GPT_OSS<br/>openai/gpt-oss-20b<br/>8192 tokens<br/>Reasoning: medium]
+    ModelSelector -->|Equilíbrio| QWEN[QWEN<br/>qwen/qwen3-32b<br/>4096 tokens<br/>Reasoning: default]
+    ModelSelector -->|Exploração| SCOUT[SCOUT<br/>llama-4-scout-17b<br/>1024 tokens<br/>16e-instruct]
+    ModelSelector -->|Precisão| MAVERICK[MAVERICK<br/>llama-4-maverick-17b<br/>1024 tokens<br/>128e-instruct]
+    
+    VERSATILE --> GroqAPI[Groq API]
+    INSTANT --> GroqAPI
+    GPT_OSS --> GroqAPI
+    QWEN --> GroqAPI
+    SCOUT --> GroqAPI
+    MAVERICK --> GroqAPI
+```
+
+**Especificação dos Modelos Groq:**
+
+1. **VERSATILE** (`llama-3.3-70b-versatile`)
+   - **Capacidade**: 70 bilhões de parâmetros
+   - **Contexto**: 1024 tokens
+   - **Uso**: Análise complexa, raciocínio profundo, tarefas gerais avançadas
+   - **Latência**: Média
+   - **Reasoning Effort**: N/A (padrão)
+
+2. **INSTANT** (`llama-3.1-8b-instant`)
+   - **Capacidade**: 8 bilhões de parâmetros
+   - **Contexto**: 1024 tokens
+   - **Uso**: Respostas rápidas, tarefas simples, fallback padrão
+   - **Latência**: Muito baixa
+   - **Reasoning Effort**: N/A (padrão)
+
+3. **GPT_OSS** (`openai/gpt-oss-20b`)
+   - **Capacidade**: 20 bilhões de parâmetros
+   - **Contexto**: 8192 tokens (maior contexto disponível)
+   - **Uso**: Tarefas que exigem contexto extenso, análise de documentos longos
+   - **Latência**: Média-Alta
+   - **Reasoning Effort**: Medium
+
+4. **QWEN** (`qwen/qwen3-32b`)
+   - **Capacidade**: 32 bilhões de parâmetros
+   - **Contexto**: 4096 tokens
+   - **Uso**: Equilíbrio entre qualidade e velocidade
+   - **Latência**: Média
+   - **Reasoning Effort**: Default
+
+5. **SCOUT** (`meta-llama/llama-4-scout-17b-16e-instruct`)
+   - **Capacidade**: 17 bilhões de parâmetros
+   - **Contexto**: 1024 tokens
+   - **Uso**: Exploração de ideias, brainstorming, análise exploratória
+   - **Latência**: Média
+   - **Reasoning Effort**: N/A (16e-instruct)
+
+6. **MAVERICK** (`meta-llama/llama-4-maverick-17b-128e-instruct`)
+   - **Capacidade**: 17 bilhões de parâmetros
+   - **Contexto**: 1024 tokens
+   - **Uso**: Análise precisa, raciocínio profundo, tarefas que exigem precisão
+   - **Latência**: Alta
+   - **Reasoning Effort**: N/A (128e-instruct - máximo de instruções)
+
+### 7.3. Estratégia de Seleção de Modelo Groq
+
+O `GroqProvider` implementa seleção dinâmica de modelo baseada no parâmetro `model` da requisição:
+
+```java
+GroqModel selectedModel = GroqModel.fromString(request.model());
+```
+
+**Lógica de Seleção:**
+- Se `model` não for especificado ou estiver vazio → **INSTANT** (modelo padrão)
+- Se `model` corresponder a um enum válido → Modelo correspondente
+- Caso contrário → Exceção com modelo desconhecido
+
+### 7.4. Orquestração com Fallback (GroqOrchestratorService)
+
+O `GroqOrchestratorService` implementa uma estratégia de fallback inteligente entre modelos:
+
+```mermaid
+sequenceDiagram
+    participant Service as AIService
+    participant Orch as GroqOrchestratorService
+    participant Provider as GroqProvider
+    
+    Service->>Orch: executeWithFallback(prompt, "VERSATILE", "INSTANT")
+    Orch->>Provider: executeTask(request: "VERSATILE")
+    
+    alt Sucesso
+        Provider-->>Orch: Resposta completa
+        Orch-->>Service: Retorna resposta
+    else Falha
+        Provider-->>Orch: Exceção ou resposta vazia
+        Orch->>Provider: executeTask(request: "INSTANT")
+        Provider-->>Orch: Resposta de fallback
+        Orch-->>Service: Retorna resposta de fallback
+    end
+```
+
+**Estratégia de Fallback:**
+1. **Tentativa Inicial**: Executa com modelo preferencial (ex: VERSATILE)
+2. **Detecção de Falha**: Verifica exceção ou resposta vazia/inválida
+3. **Fallback Automático**: Executa automaticamente com modelo secundário (ex: INSTANT)
+4. **Logging**: Registra tentativa inicial e fallback para monitoramento
+
+**Benefícios:**
+- **Alta Disponibilidade**: Continuidade mesmo com falha de modelo específico
+- **Otimização Automática**: Usa modelo mais poderoso quando disponível, fallback para mais rápido
+- **Transparência**: Logging detalhado para análise e debugging
+
+### 7.5. Estratégias de Orquestração Global
+
+O `AIOrchestratorService` implementa roteamento entre provedores:
+
+- **Primary-Fallback**: Provedor primário com fallback automático para secundário
+- **Task-Based Routing**: Roteamento baseado em tipo de tarefa (multimodal → Gemini, texto → Groq)
+- **Load-Aware Selection**: Seleção baseada em carga do sistema (futuro)
+- **Cost Optimization**: Seleção considerando custo-benefício (futuro)
+- **User Preference**: Respeita preferência do usuário (`preferredProvider` na requisição)
+
+---
+
+## 8. Conclusão
+
+A arquitetura de IA do MindForge demonstra como princípios sólidos de engenharia de software podem ser aplicados para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design—orquestração em Java, padrão Strategy, ciclo de memória assíncrono e múltiplos padrões de resiliência—resultam em um sistema que transcende a categoria de simples cliente de API.
+
+O sistema representa uma plataforma que agrega valor real ao transformar modelos de linguagem genéricos em ferramentas de aprendizado contextuais e personalizadas, com a flexibilidade inerente para evoluir e se adaptar às mudanças no cenário de IA.
+
+---
+
+## Referências e Recursos
+
+- [Resilience4j Documentation](https://resilience4j.readme.io/)
+- [Spring Boot Async](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.task-execution-and-scheduling)
+- [Google Gemini API](https://ai.google.dev/docs)
+- [Groq API Documentation](https://console.groq.com/docs)
