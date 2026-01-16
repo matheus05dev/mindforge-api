@@ -16,4 +16,7 @@ public interface KanbanTaskRepository extends JpaRepository<KanbanTask, Long> {
     // Encontra todas as tarefas associadas a um ID de projeto específico.
     // Essencial para testar a integridade dos relacionamentos.
     List<KanbanTask> findByProjectId(Long projectId);
+
+    // Encontra todas as tarefas de uma coluna específica
+    List<KanbanTask> findByColumnId(Long columnId);
 }

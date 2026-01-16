@@ -88,4 +88,19 @@ public class StudyService {
         }
         studySessionRepository.deleteById(sessionId);
     }
+
+    public List<StudySessionResponse> getSessionsBySubject(Long subjectId) {
+        Subject subject = subjectRepository.findById(subjectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
+        
+        return studySessionRepository.findBySubjectId(subjectId).stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public StudySessionResponse getSessionById(Long sessionId) {
+        StudySession session = studySessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId));
+        return mapper.toResponse(session);
+    }
 }

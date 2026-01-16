@@ -23,6 +23,8 @@ public interface ProjectMapper {
     @Mapping(target = "documents", ignore = true)
     Project toEntity(ProjectRequest request);
 
+    @Mapping(source = "workspace.id", target = "workspaceId")
+    @Mapping(source = "githubRepoUrl", target = "githubRepoUrl")
     ProjectResponse toResponse(Project project);
 
     @Mapping(target = "id", ignore = true)

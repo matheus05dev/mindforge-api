@@ -73,6 +73,25 @@ public class StudyRestController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Get all sessions for a subject", description = "Returns all study sessions for a specific subject")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the sessions")
+    })
+    @GetMapping("/subjects/{subjectId}/sessions")
+    public ResponseEntity<List<StudySessionResponse>> getSessionsBySubject(@PathVariable Long subjectId) {
+        return ResponseEntity.ok(service.getSessionsBySubject(subjectId));
+    }
+
+    @Operation(summary = "Get a study session by ID", description = "Returns a single study session")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the session"),
+            @ApiResponse(responseCode = "404", description = "Session not found")
+    })
+    @GetMapping("/sessions/{sessionId}")
+    public ResponseEntity<StudySessionResponse> getSessionById(@PathVariable Long sessionId) {
+        return ResponseEntity.ok(service.getSessionById(sessionId));
+    }
+
     @Operation(summary = "Log a study session", description = "Logs a new study session for a specific subject")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successfully logged the session")
