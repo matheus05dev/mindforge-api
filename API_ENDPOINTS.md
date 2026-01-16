@@ -254,10 +254,28 @@ Lista todos os assuntos de estudo.
     "description": "Programação em Java",
     "proficiencyLevel": "INTERMEDIATE",
     "professionalLevel": "PLENO",
-    "studySessions": []
+    "studySessions": [
+      {
+        "id": 1,
+        "subjectId": 1,
+        "subjectName": "Java",
+        "startTime": "2024-01-15T10:00:00",
+        "durationMinutes": 120,
+        "notes": "Estudei sobre streams e lambdas",
+        "documents": []
+      }
+    ]
   }
 ]
 ```
+
+**Campos:**
+- `id` (Long): ID único do assunto
+- `name` (String): Nome do assunto
+- `description` (String, opcional): Descrição do assunto
+- `proficiencyLevel` (Enum, opcional): Nível de proficiência
+- `professionalLevel` (Enum, opcional): Nível profissional
+- `studySessions` (List): Lista de sessões de estudo relacionadas
 
 **Níveis de Proficiência:** `BEGINNER`, `INTERMEDIATE`, `ADVANCED`  
 **Níveis Profissionais:** `JUNIOR`, `PLENO`, `SENIOR`
@@ -267,6 +285,9 @@ Lista todos os assuntos de estudo.
 ### GET `/api/studies/subjects/{subjectId}`
 Busca um assunto por ID.
 
+**Parâmetros:**
+- `subjectId` (path): ID do assunto
+
 **Resposta:**
 ```json
 {
@@ -275,9 +296,23 @@ Busca um assunto por ID.
   "description": "Programação em Java",
   "proficiencyLevel": "INTERMEDIATE",
   "professionalLevel": "PLENO",
-  "studySessions": []
+  "studySessions": [
+    {
+      "id": 1,
+      "subjectId": 1,
+      "subjectName": "Java",
+      "startTime": "2024-01-15T10:00:00",
+      "durationMinutes": 120,
+      "notes": "Estudei sobre streams e lambdas",
+      "documents": []
+    }
+  ]
 }
 ```
+
+**Códigos de Status:**
+- `200`: Sucesso
+- `404`: Assunto não encontrado
 
 ---
 
@@ -294,6 +329,14 @@ Cria um novo assunto de estudo.
 }
 ```
 
+**Campos Obrigatórios:**
+- `name` (String): Nome do assunto
+
+**Campos Opcionais:**
+- `description` (String): Descrição do assunto
+- `proficiencyLevel` (Enum): Nível de proficiência (`BEGINNER`, `INTERMEDIATE`, `ADVANCED`)
+- `professionalLevel` (Enum): Nível profissional (`JUNIOR`, `PLENO`, `SENIOR`)
+
 **Resposta:**
 ```json
 {
@@ -306,10 +349,17 @@ Cria um novo assunto de estudo.
 }
 ```
 
+**Códigos de Status:**
+- `200`: Assunto criado com sucesso
+- `400`: Dados inválidos
+
 ---
 
 ### PUT `/api/studies/subjects/{subjectId}`
 Atualiza um assunto de estudo.
+
+**Parâmetros:**
+- `subjectId` (path): ID do assunto a ser atualizado
 
 **Entrada:**
 ```json
@@ -333,12 +383,24 @@ Atualiza um assunto de estudo.
 }
 ```
 
+**Códigos de Status:**
+- `200`: Assunto atualizado com sucesso
+- `404`: Assunto não encontrado
+- `400`: Dados inválidos
+
 ---
 
 ### DELETE `/api/studies/subjects/{subjectId}`
 Deleta um assunto de estudo.
 
+**Parâmetros:**
+- `subjectId` (path): ID do assunto a ser deletado
+
 **Resposta:** `204 No Content`
+
+**Códigos de Status:**
+- `204`: Assunto deletado com sucesso
+- `404`: Assunto não encontrado
 
 ---
 
@@ -346,6 +408,9 @@ Deleta um assunto de estudo.
 
 ### POST `/api/studies/subjects/{subjectId}/sessions`
 Registra uma nova sessão de estudo.
+
+**Parâmetros:**
+- `subjectId` (path): ID do assunto ao qual a sessão pertence
 
 **Entrada:**
 ```json
@@ -355,6 +420,13 @@ Registra uma nova sessão de estudo.
   "notes": "Estudei sobre streams e lambdas"
 }
 ```
+
+**Campos Obrigatórios:**
+- `startTime` (LocalDateTime): Data e hora de início da sessão (formato ISO: `YYYY-MM-DDTHH:mm:ss`)
+- `durationMinutes` (Integer): Duração da sessão em minutos (deve ser positivo)
+
+**Campos Opcionais:**
+- `notes` (String): Notas sobre a sessão de estudo
 
 **Resposta:**
 ```json
@@ -369,10 +441,27 @@ Registra uma nova sessão de estudo.
 }
 ```
 
+**Campos da Resposta:**
+- `id` (Long): ID único da sessão
+- `subjectId` (Long): ID do assunto
+- `subjectName` (String): Nome do assunto
+- `startTime` (LocalDateTime): Data e hora de início
+- `durationMinutes` (Integer): Duração em minutos
+- `notes` (String, opcional): Notas da sessão
+- `documents` (List): Lista de documentos associados
+
+**Códigos de Status:**
+- `200`: Sessão registrada com sucesso
+- `400`: Dados inválidos
+- `404`: Assunto não encontrado
+
 ---
 
 ### PUT `/api/studies/sessions/{sessionId}`
 Atualiza uma sessão de estudo.
+
+**Parâmetros:**
+- `sessionId` (path): ID da sessão a ser atualizada
 
 **Entrada:**
 ```json
@@ -396,12 +485,24 @@ Atualiza uma sessão de estudo.
 }
 ```
 
+**Códigos de Status:**
+- `200`: Sessão atualizada com sucesso
+- `404`: Sessão não encontrada
+- `400`: Dados inválidos
+
 ---
 
 ### DELETE `/api/studies/sessions/{sessionId}`
 Deleta uma sessão de estudo.
 
+**Parâmetros:**
+- `sessionId` (path): ID da sessão a ser deletada
+
 **Resposta:** `204 No Content`
+
+**Códigos de Status:**
+- `204`: Sessão deletada com sucesso
+- `404`: Sessão não encontrada
 
 ---
 
@@ -927,19 +1028,49 @@ Conta do GitHub conectada e token salvo com sucesso!
 
 ## 📌 Notas Importantes
 
-1. **Autenticação:** Atualmente não há sistema de autenticação implementado. O `userId` está hardcoded como `1L` na integração do GitHub.
+### Autenticação
+Atualmente não há sistema de autenticação implementado. O `userId` está hardcoded como `1L` na integração do GitHub.
 
-2. **Formato de Data:**
-   - Datas: `"2024-12-31"` (formato ISO: YYYY-MM-DD)
-   - Datas com hora: `"2024-01-15T10:00:00"` (formato ISO: YYYY-MM-DDTHH:mm:ss)
+### Formato de Data
+- **Datas simples:** `"2024-12-31"` (formato ISO: YYYY-MM-DD)
+- **Datas com hora:** `"2024-01-15T10:00:00"` (formato ISO: YYYY-MM-DDTHH:mm:ss)
+- **Timezone:** As datas são armazenadas em LocalDateTime (sem timezone)
 
-3. **Upload de Arquivos:** Use `multipart/form-data` para uploads.
+### Upload de Arquivos
+Use `multipart/form-data` para uploads. O campo `file` é obrigatório.
 
-4. **Códigos de Status HTTP:**
-   - `200`: Sucesso
-   - `204`: Sucesso sem conteúdo (DELETE)
-   - `404`: Recurso não encontrado
-   - `500`: Erro interno do servidor
+### Códigos de Status HTTP
+- `200 OK`: Requisição bem-sucedida
+- `201 Created`: Recurso criado com sucesso (não usado atualmente, todos retornam 200)
+- `204 No Content`: Sucesso sem conteúdo (usado em DELETE)
+- `400 Bad Request`: Dados inválidos ou faltando campos obrigatórios
+- `404 Not Found`: Recurso não encontrado
+- `500 Internal Server Error`: Erro interno do servidor
 
-5. **Validação:** Campos marcados como obrigatórios retornam erro `400 Bad Request` se não forem fornecidos.
+### Validação
+- Campos marcados como obrigatórios retornam erro `400 Bad Request` se não forem fornecidos
+- Validações são feitas usando Bean Validation (Jakarta Validation)
+- Mensagens de erro são retornadas no formato padrão do Spring Boot
+
+### Enums
+**ProficiencyLevel:**
+- `BEGINNER`: Iniciante
+- `INTERMEDIATE`: Intermediário
+- `ADVANCED`: Avançado
+
+**ProfessionalLevel:**
+- `JUNIOR`: Júnior
+- `PLENO`: Pleno
+- `SENIOR`: Sênior
+
+**WorkspaceType:**
+- `PROJECT`: Workspace focado em projetos
+- `STUDY`: Workspace focado em estudos
+- `GENERIC`: Workspace genérico/híbrido
+
+**AnalysisMode (IA):**
+- `MENTOR`: Modo didático e guiado (padrão)
+- `ANALYST`: Modo direto e sincero
+- `DEBUG_ASSISTANT`: Focado em encontrar e corrigir bugs
+- `SOCRATIC_TUTOR`: Focado em fazer perguntas para guiar o aprendizado
 
