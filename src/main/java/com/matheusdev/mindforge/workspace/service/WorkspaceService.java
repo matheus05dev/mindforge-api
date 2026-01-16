@@ -5,6 +5,7 @@ import com.matheusdev.mindforge.workspace.model.Workspace;
 import com.matheusdev.mindforge.workspace.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -27,5 +28,20 @@ public class WorkspaceService {
     public Workspace create(Workspace workspace) {
         // No futuro, associar ao ownerId
         return workspaceRepository.save(workspace);
+    }
+
+    @Transactional
+    public Workspace update(Long id, Workspace workspace) {
+        Workspace existing = findById(id);
+        existing.setName(workspace.getName());
+        existing.setDescription(workspace.getDescription());
+        existing.setType(workspace.getType());
+        return workspaceRepository.save(existing);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        Workspace workspace = findById(id);
+        workspaceRepository.delete(workspace);
     }
 }

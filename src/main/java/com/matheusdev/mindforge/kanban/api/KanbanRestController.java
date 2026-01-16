@@ -32,6 +32,25 @@ public class KanbanRestController {
         return ResponseEntity.ok(service.getBoard());
     }
 
+    @Operation(summary = "Get all columns", description = "Returns all columns in the Kanban board")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the columns")
+    })
+    @GetMapping("/columns")
+    public ResponseEntity<List<KanbanColumnResponse>> getAllColumns() {
+        return ResponseEntity.ok(service.getAllColumns());
+    }
+
+    @Operation(summary = "Get a column by ID", description = "Returns a single column")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the column"),
+            @ApiResponse(responseCode = "404", description = "Column not found")
+    })
+    @GetMapping("/columns/{columnId}")
+    public ResponseEntity<KanbanColumnResponse> getColumnById(@PathVariable Long columnId) {
+        return ResponseEntity.ok(service.getColumnById(columnId));
+    }
+
     @Operation(summary = "Create a new column", description = "Creates a new column in the Kanban board")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successfully created the column")
@@ -39,6 +58,25 @@ public class KanbanRestController {
     @PostMapping("/columns")
     public ResponseEntity<KanbanColumnResponse> createColumn(@RequestBody KanbanColumnRequest request) {
         return ResponseEntity.ok(service.createColumn(request));
+    }
+
+    @Operation(summary = "Get all tasks for a column", description = "Returns all tasks in a specific column")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the tasks")
+    })
+    @GetMapping("/columns/{columnId}/tasks")
+    public ResponseEntity<List<KanbanTaskResponse>> getTasksByColumn(@PathVariable Long columnId) {
+        return ResponseEntity.ok(service.getTasksByColumn(columnId));
+    }
+
+    @Operation(summary = "Get a task by ID", description = "Returns a single task")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved the task"),
+            @ApiResponse(responseCode = "404", description = "Task not found")
+    })
+    @GetMapping("/tasks/{taskId}")
+    public ResponseEntity<KanbanTaskResponse> getTaskById(@PathVariable Long taskId) {
+        return ResponseEntity.ok(service.getTaskById(taskId));
     }
 
     @Operation(summary = "Create a new task", description = "Creates a new task in a specific column")

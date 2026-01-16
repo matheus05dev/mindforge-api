@@ -105,4 +105,31 @@ public class KanbanService {
         }
         columnRepository.deleteById(columnId);
     }
+
+    public List<KanbanColumnResponse> getAllColumns() {
+        return columnRepository.findAll().stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public KanbanColumnResponse getColumnById(Long columnId) {
+        KanbanColumn column = columnRepository.findById(columnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Coluna do Kanban não encontrada com o id: " + columnId));
+        return mapper.toResponse(column);
+    }
+
+    public List<KanbanTaskResponse> getTasksByColumn(Long columnId) {
+        KanbanColumn column = columnRepository.findById(columnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Coluna do Kanban não encontrada com o id: " + columnId));
+        
+        return taskRepository.findByColumnId(columnId).stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public KanbanTaskResponse getTaskById(Long taskId) {
+        KanbanTask task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + taskId));
+        return mapper.toResponse(task);
+    }
 }

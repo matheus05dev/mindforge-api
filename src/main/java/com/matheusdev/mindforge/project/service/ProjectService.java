@@ -132,4 +132,19 @@ public class ProjectService {
         }
         milestoneRepository.deleteById(milestoneId);
     }
+
+    public List<MilestoneResponse> getMilestonesByProject(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
+        
+        return milestoneRepository.findByProjectId(projectId).stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public MilestoneResponse getMilestoneById(Long milestoneId) {
+        Milestone milestone = milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new ResourceNotFoundException("Marco (milestone) não encontrado com o id: " + milestoneId));
+        return mapper.toResponse(milestone);
+    }
 }

@@ -64,6 +64,18 @@ public class ProjectRestController {
         return ResponseEntity.ok(service.linkRepository(projectId, request.getRepoUrl()));
     }
 
+    @Operation(summary = "Get all milestones for a project")
+    @GetMapping("/{projectId}/milestones")
+    public ResponseEntity<List<MilestoneResponse>> getMilestonesByProject(@PathVariable Long projectId) {
+        return ResponseEntity.ok(service.getMilestonesByProject(projectId));
+    }
+
+    @Operation(summary = "Get a milestone by ID")
+    @GetMapping("/milestones/{milestoneId}")
+    public ResponseEntity<MilestoneResponse> getMilestoneById(@PathVariable Long milestoneId) {
+        return ResponseEntity.ok(service.getMilestoneById(milestoneId));
+    }
+
     @Operation(summary = "Add a milestone to a project")
     @PostMapping("/{projectId}/milestones")
     public ResponseEntity<MilestoneResponse> addMilestone(
