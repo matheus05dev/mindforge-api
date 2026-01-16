@@ -61,7 +61,8 @@ public class CodeAnalysisService {
         String systemMessage = aiContextService.buildSystemMessage(userProfile, baseRole);
         
         // Seleciona o modelo (Análise de código geralmente é complexa)
-        String model = aiContextService.selectModel(userProfile, true);
+        // Passando null como provider para usar o padrão (Groq)
+        String model = aiContextService.selectModel(userProfile, true, null);
 
         String prompt;
         switch (request.getMode()) {

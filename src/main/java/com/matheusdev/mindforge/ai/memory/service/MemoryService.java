@@ -34,7 +34,16 @@ public class MemoryService {
 
     public UserProfileAI getProfile(Long userId) {
         return userProfileAIRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Perfil de IA não encontrado para o usuário com id: " + userId));
+                .orElseGet(() -> createDefaultProfile(userId));
+    }
+
+    private UserProfileAI createDefaultProfile(Long userId) {
+        log.info("Criando perfil padrão de IA para o usuário: {}", userId);
+        UserProfileAI newProfile = new UserProfileAI();
+        newProfile.setId(userId);
+        newProfile.setSummary("Novo usuário. Perfil ainda não analisado.");
+        newProfile.setStructuredProfile("{}");
+        return userProfileAIRepository.save(newProfile);
     }
 
     @Async

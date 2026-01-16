@@ -7,6 +7,8 @@ import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
 import com.matheusdev.mindforge.ai.memory.service.MemoryService;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
+import com.matheusdev.mindforge.document.model.Document;
+import com.matheusdev.mindforge.document.service.DocumentService;
 import com.matheusdev.mindforge.exception.BusinessException;
 import com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeItemResponse;
 import com.matheusdev.mindforge.project.model.Project;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +41,7 @@ public class AIService {
     private final PortfolioService portfolioService;
     private final ProductService productService;
     private final AIContextService aiContextService;
+    private final DocumentService documentService;
 
     @Transactional
     public ChatMessage analyzeCodeForProficiency(CodeAnalysisRequest request) throws IOException {
@@ -63,12 +67,26 @@ public class AIService {
     public ChatMessage analyzeGeneric(GenericAnalysisRequest request) {
         final Long userId = 1L; // Provisório
         String contextInfo = getContextInfo(request);
+        
+        // Leitura de documento, se fornecido
+        if (request.getDocumentId() != null) {
+            try {
+                Document document = documentService.findDocumentById(request.getDocumentId());
+                byte[] contentBytes = documentService.getDocumentContent(document);
+                // Assumindo texto UTF-8 por enquanto. Para imagens, seria necessário lógica multimodal.
+                String documentContent = new String(contentBytes, StandardCharsets.UTF_8);
+                contextInfo += "\n\n--- Conteúdo do Documento Anexado (" + document.getFileName() + ") ---\n" + documentContent + "\n-----------------------------------\n";
+            } catch (IOException e) {
+                throw new BusinessException("Erro ao ler o conteúdo do documento: " + e.getMessage());
+            }
+        }
+
         UserProfileAI userProfile = memoryService.getProfile(userId);
         String profileSummary = userProfile.getSummary();
         
         // Constrói System Message e seleciona Modelo
         String systemMessage = aiContextService.buildSystemMessage(userProfile, "Assistente Especialista");
-        String model = aiContextService.selectModel(userProfile, false); // Tarefa genérica pode ser menos complexa
+        String model = aiContextService.selectModel(userProfile, false, request.getProvider()); // Tarefa genérica pode ser menos complexa
 
         String prompt = promptBuilderService.buildGenericPrompt(request.getQuestion(), contextInfo, profileSummary);
         ChatSession session = chatService.getOrCreateGenericChatSession(request);
