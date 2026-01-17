@@ -24,7 +24,7 @@ public class ChatRestController {
 
     @PostMapping
     @Operation(summary = "Send a prompt to the selected AI provider",
-            description = "Allows sending a direct text prompt to an AI provider (e.g., Gemini, Groq) and receiving a response. You can specify the provider, model, and a system message.")
+            description = "Allows sending a direct text prompt to an AI provider (e.g., Ollama, Groq) and receiving a response. You can specify the provider, model, and a system message.")
     public CompletableFuture<ResponseEntity<AIProviderResponse>> chat(@RequestBody ChatRequest chatRequest) {
         return aiOrchestrationService.handleChatInteraction(chatRequest)
                 .thenApply(ResponseEntity::ok);

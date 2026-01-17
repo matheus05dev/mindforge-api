@@ -11,6 +11,6 @@ public class NoteAIRequestDTO {
     @Schema(description = "A instrução para a IA sobre como processar a nota (ex: 'resuma este texto', 'traduza para inglês').", required = true)
     private String instruction;
 
-    @Schema(description = "Provedor de IA a ser usado (ex: 'geminiProvider', 'groqProvider'). Padrão: 'geminiProvider'.")
+    @Schema(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.")
     private String provider;
 }

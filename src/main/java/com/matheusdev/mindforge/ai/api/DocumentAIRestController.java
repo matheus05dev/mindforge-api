@@ -21,21 +21,21 @@ import java.util.concurrent.CompletableFuture;
 @RestController
 @RequestMapping("/v1/ai/document")
 @RequiredArgsConstructor
-@Tag(name = "AI Document Processing", description = "Endpoints for interacting with AI by sending documents")
+@Tag(name = "Processamento de Documentos com IA", description = "Endpoints para interagir com a IA enviando documentos")
 @Slf4j
 public class DocumentAIRestController {
 
     private final AIOrchestrationService aiOrchestrationService;
 
     @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Analyze a document with a text prompt",
-            description = "Upload a document (e.g., PDF, DOCX, TXT) and provide a text prompt. The service extracts text from the document, combines it with your prompt, and sends it to the selected AI provider for analysis.")
+    @Operation(summary = "Analisa um documento com um prompt de texto",
+            description = "Faça upload de um documento (ex: PDF, DOCX, TXT) e forneça um prompt de texto. O serviço extrai o texto do documento, combina com seu prompt e envia para o provedor de IA selecionado para análise.")
     public CompletableFuture<ResponseEntity<AIProviderResponse>> analyzeDocument(
-            @Parameter(description = "The document file to be analyzed.", required = true)
+            @Parameter(description = "O arquivo do documento a ser analisado.", required = true)
             @RequestParam("file") MultipartFile file,
-            @Parameter(description = "The text prompt to guide the AI's analysis.", required = true)
+            @Parameter(description = "O prompt de texto para guiar a análise da IA.", required = true)
             @RequestParam("prompt") String prompt,
-            @Parameter(description = "The AI provider to use. Options: 'geminiProvider', 'groqProvider'. Defaults to 'geminiProvider'.")
+            @Parameter(description = "O provedor de IA a ser usado. Opções: 'ollamaProvider', 'groqProvider'. Padrão: 'ollamaProvider'.")
             @RequestParam(value = "provider", required = false) String provider) throws IOException {
 
         log.info(">>> DocumentAIRestController: Recebida requisição de análise de documento.");

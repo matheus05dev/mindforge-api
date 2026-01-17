@@ -1,58 +1,54 @@
 package com.matheusdev.mindforge.ai.agent;
 
-import com.matheusdev.mindforge.ai.provider.gemini.dto.GeminiRequest;
+import com.matheusdev.mindforge.ai.provider.ollama.dto.OllamaRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 @Component
 public class AIAgentFactory {
 
-    public GeminiRequest createRequest(AIAgent agent, String userPrompt, MultipartFile file) throws IOException {
-        List<GeminiRequest.Content> contents = new ArrayList<>();
+    public OllamaRequest createRequest(AIAgent agent, String userPrompt, MultipartFile file) throws IOException {
+        List<OllamaRequest.Message> messages = new ArrayList<>();
 
-        // Para v1 API, incluir system instruction como primeira mensagem com role "user"
-        List<GeminiRequest.Part> systemParts = new ArrayList<>();
-        systemParts.add(GeminiRequest.Part.fromText(agent.getSystemInstruction()));
-        contents.add(new GeminiRequest.Content("user", systemParts));
+        // System instruction
+        messages.add(new OllamaRequest.Message("system", agent.getSystemInstruction(), null));
 
-        // Adiciona o prompt de texto do usuário e arquivo
-        List<GeminiRequest.Part> userParts = new ArrayList<>();
-        if (userPrompt != null && !userPrompt.isEmpty()) {
-            userParts.add(GeminiRequest.Part.fromText(userPrompt));
-        }
-
-        // Adiciona o arquivo (documento ou imagem)
+        // User prompt and file
+        List<String> images = null;
         if (file != null && !file.isEmpty()) {
-            String mimeType = file.getContentType();
             String base64Data = Base64.getEncoder().encodeToString(file.getBytes());
-            userParts.add(GeminiRequest.Part.fromInlineData(mimeType, base64Data));
+            images = Collections.singletonList(base64Data);
         }
 
-        if (!userParts.isEmpty()) {
-            contents.add(new GeminiRequest.Content("user", userParts));
+        if (userPrompt != null && !userPrompt.isEmpty()) {
+            messages.add(new OllamaRequest.Message("user", userPrompt, images));
+        } else if (images != null) {
+             messages.add(new OllamaRequest.Message("user", "", images));
         }
 
-        // Define a configuração de geração (para JSON, por exemplo)
-        GeminiRequest.GenerationConfig generationConfig = null;
+        // Generation config (temperature only for now in OllamaRequest)
+        OllamaRequest.Options options = null;
         if (agent == AIAgent.STRUCTURED_EXTRACTOR) {
-            generationConfig = new GeminiRequest.GenerationConfig("application/json", 0.9);
+             // Ollama doesn't support responseMimeType in the same way, but we can set temperature
+             options = new OllamaRequest.Options(0.9);
         }
 
-        return GeminiRequest.builder()
-                .contents(contents)
-                .systemInstruction(null) // Removido para v1 API
-                .generationConfig(generationConfig)
+        return OllamaRequest.builder()
+                .model(agent.getModel())
+                .messages(messages)
+                .stream(false)
+                .options(options)
                 .build();
     }
 
     public String buildApiUrl(AIAgent agent, String baseUrl) {
-        // Constrói a URL completa usando o baseUrl e o modelo do agente
-        return baseUrl + agent.getModel() + ":generateContent";
+        // Ollama usually has a fixed endpoint /api/chat, model is in the body
+        return baseUrl;
     }
 }
