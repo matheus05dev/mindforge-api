@@ -11,6 +11,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class MindForgeApplication {
 
 	public static void main(String[] args) {
+		
 		SpringApplication.run(MindForgeApplication.class, args);
 	}
 

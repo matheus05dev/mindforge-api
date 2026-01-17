@@ -1,34 +1,34 @@
 package com.matheusdev.mindforge.ai.memory.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.matheusdev.mindforge.ai.provider.AIProvider;
-import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
+import com.matheusdev.mindforge.ai.dto.ChatRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
 import com.matheusdev.mindforge.ai.memory.repository.UserProfileAIRepository;
-import com.matheusdev.mindforge.exception.ResourceNotFoundException;
+import com.matheusdev.mindforge.ai.service.AIOrchestrationService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 @Service
 @Slf4j
 public class MemoryService {
 
     private final UserProfileAIRepository userProfileAIRepository;
-    private final AIProvider aiProvider;
+    private final AIOrchestrationService aiOrchestrationService;
     private final ObjectMapper objectMapper;
 
-    public MemoryService(UserProfileAIRepository userProfileAIRepository,
-                         @Qualifier("AIOrchestratorService") AIProvider aiProvider,
-                         ObjectMapper objectMapper) {
+    // Construtor manual para quebrar a referência circular com @Lazy
+    public MemoryService(UserProfileAIRepository userProfileAIRepository, @Lazy AIOrchestrationService aiOrchestrationService, ObjectMapper objectMapper) {
         this.userProfileAIRepository = userProfileAIRepository;
-        this.aiProvider = aiProvider;
+        this.aiOrchestrationService = aiOrchestrationService;
         this.objectMapper = objectMapper;
     }
 
@@ -52,17 +52,17 @@ public class MemoryService {
         log.info("Iniciando atualização assíncrona do perfil de IA para o usuário: {}", userId);
 
         String metaPrompt = buildProfileUpdatePrompt(chatHistory);
-        
-        AIProviderRequest request = new AIProviderRequest(metaPrompt);
-        // Usando .join() para esperar o CompletableFuture
-        AIProviderResponse response = aiProvider.executeTask(request).join();
-
-        if (response.getError() != null || response.getContent() == null) {
-            log.error("Falha ao atualizar perfil de IA para o usuário {}: {}", userId, response.getError());
-            return;
-        }
 
         try {
+            String defaultProvider = "geminiProvider"; // Gemini é bom para extração de JSON
+            ChatRequest chatRequest = new ChatRequest(metaPrompt, defaultProvider, null, null);
+            AIProviderResponse response = aiOrchestrationService.handleChatInteraction(chatRequest).get();
+
+            if (response.getError() != null || response.getContent() == null) {
+                log.error("Falha ao atualizar perfil de IA para o usuário {}: {}", userId, response.getError());
+                return;
+            }
+
             String jsonResponse = response.getContent();
             Map<String, Object> structuredProfile = objectMapper.readValue(jsonResponse, Map.class);
             String summary = (String) structuredProfile.getOrDefault("summary", "N/A");
@@ -75,8 +75,11 @@ public class MemoryService {
             userProfileAIRepository.save(profile);
             log.info("Perfil de IA para o usuário {} atualizado com sucesso.", userId);
 
-        } catch (Exception e) {
-            log.error("Erro ao processar a resposta JSON da IA para o perfil do usuário {}: {}", userId, e.getMessage());
+        } catch (InterruptedException | ExecutionException | IOException e) {
+            log.error("Erro ao processar a atualização do perfil de IA para o usuário {}: {}", userId, e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

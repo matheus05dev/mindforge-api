@@ -261,8 +261,8 @@ A documentação interativa da API está disponível através do Swagger UI:
 
 Para uma compreensão mais profunda da arquitetura e decisões de design:
 
-- **[Arquitetura Técnica Completa](TECHNICAL_ARCHITECTURE.md)** - Análise detalhada da arquitetura, padrões de design e fluxos de dados
-- **[Arquitetura do Módulo de IA](AI_ARCHITECTURE.md)** - Deep dive na orquestração de IA, engenharia de prompt e ciclo de memória
+- **[Arquitetura Técnica Completa](docs/TECHNICAL_ARCHITECTURE.md)** - Análise detalhada da arquitetura, padrões de design e fluxos de dados
+- **[Arquitetura do Módulo de IA](docs/AI_ARCHITECTURE.md)** - Deep dive na orquestração de IA, engenharia de prompt e ciclo de memória
 
 ---
 

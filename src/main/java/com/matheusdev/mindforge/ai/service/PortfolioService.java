@@ -2,8 +2,11 @@ package com.matheusdev.mindforge.ai.service;
 
 import com.matheusdev.mindforge.ai.chat.model.ChatMessage;
 import com.matheusdev.mindforge.ai.chat.model.ChatSession;
+import com.matheusdev.mindforge.ai.dto.ChatRequest;
 import com.matheusdev.mindforge.ai.dto.PortfolioReviewRequest;
-import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
+import com.matheusdev.mindforge.ai.dto.PromptPair;
+import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
+import com.matheusdev.mindforge.ai.memory.service.MemoryService;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.exception.BusinessException;
 import com.matheusdev.mindforge.integration.github.GitHubClient;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutionException;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +27,8 @@ public class PortfolioService {
     private final GitHubClient gitHubClient;
     private final PromptBuilderService promptBuilderService;
     private final ChatService chatService;
-    private final PromptCacheService promptCacheService;
+    private final AIOrchestrationService aiOrchestrationService;
+    private final MemoryService memoryService;
 
     @Transactional
     public ChatMessage reviewPortfolio(PortfolioReviewRequest request) throws IOException {
@@ -36,16 +41,23 @@ public class PortfolioService {
                 .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub para esta operação."));
 
         String readmeContent = gitHubClient.getFileContent(userId, owner, repoName, "README.md");
+        UserProfileAI userProfile = memoryService.getProfile(userId);
 
-        String prompt = promptBuilderService.buildPortfolioReviewerPrompt(readmeContent);
+        PromptPair prompts = promptBuilderService.buildPortfolioReviewerPrompt(readmeContent, userProfile);
         ChatSession session = chatService.getOrCreateGenericChatSession(null);
-        ChatMessage userMessage = chatService.saveMessage(session, "user", prompt);
+        ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
-        AIProviderResponse aiResponse = promptCacheService.executeRequest(new AIProviderRequest(prompt));
+        try {
+            ChatRequest chatRequest = new ChatRequest(prompts.userPrompt(), request.getProvider(), null, prompts.systemPrompt());
+            AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(chatRequest).get();
 
-        if (aiResponse.getError() != null) {
-            throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
+            if (aiResponse.getError() != null) {
+                throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
+            }
+            return chatService.saveMessage(session, "assistant", aiResponse.getContent());
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("Falha ao processar a revisão de portfólio com IA.", e);
         }
-        return chatService.saveMessage(session, "assistant", aiResponse.getContent());
     }
 }
