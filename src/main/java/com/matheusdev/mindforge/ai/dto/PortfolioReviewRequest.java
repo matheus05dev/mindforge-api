@@ -11,6 +11,6 @@ public class PortfolioReviewRequest {
     @Schema(description = "URL completa do repositório do GitHub a ser analisado.", required = true, example = "https://github.com/matheusdev/mindforge-api")
     private String githubRepoUrl;
 
-    @Schema(description = "Provedor de IA a ser usado (ex: 'geminiProvider', 'groqProvider'). Padrão: 'geminiProvider'.")
+    @Schema(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.")
     private String provider;
 }

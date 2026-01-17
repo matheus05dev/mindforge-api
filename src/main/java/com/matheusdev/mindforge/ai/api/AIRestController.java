@@ -48,7 +48,7 @@ public class AIRestController {
     @PostMapping("/analyze/generic")
     public ResponseEntity<ChatMessage> analyzeGeneric(
             @RequestBody @Valid GenericAnalysisRequest request,
-            @Parameter(description = "Provedor de IA a ser usado (ex: 'geminiProvider', 'groqProvider'). Padrão: 'geminiProvider'.")
+            @Parameter(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.")
             @RequestParam(value = "provider", required = false) String provider) {
         ChatMessage responseMessage = aiService.analyzeGeneric(request, provider);
         return ResponseEntity.ok(responseMessage);
@@ -59,7 +59,7 @@ public class AIRestController {
     public ResponseEntity<KnowledgeItemResponse> modifyKnowledgeItemContent(
             @PathVariable Long itemId,
             @RequestBody @Valid ContentModificationRequest request,
-            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'geminiProvider'.")
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.")
             @RequestParam(value = "provider", required = false) String provider) {
         KnowledgeItemResponse updatedItem = aiService.modifyKnowledgeItemContent(itemId, request.getInstruction(), provider);
         return ResponseEntity.ok(updatedItem);
@@ -70,7 +70,7 @@ public class AIRestController {
     public ResponseEntity<KnowledgeItemResponse> transcribeImageToKnowledgeItem(
             @PathVariable Long documentId,
             @PathVariable Long itemId,
-            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'geminiProvider'.")
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.")
             @RequestParam(value = "provider", required = false) String provider) {
         try {
             KnowledgeItemResponse updatedItem = aiService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId, provider);

@@ -11,6 +11,6 @@ public class ProductThinkerRequest {
     @Schema(description = "Descrição da nova funcionalidade ou ideia a ser analisada.", required = true, example = "Um sistema de gamificação para incentivar os usuários a completarem seus estudos.")
     private String featureDescription;
 
-    @Schema(description = "Provedor de IA a ser usado (ex: 'geminiProvider', 'groqProvider'). Padrão: 'geminiProvider'.")
+    @Schema(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.")
     private String provider;
 }

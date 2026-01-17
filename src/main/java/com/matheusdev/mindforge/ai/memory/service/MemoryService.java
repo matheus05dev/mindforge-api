@@ -54,7 +54,7 @@ public class MemoryService {
         String metaPrompt = buildProfileUpdatePrompt(chatHistory);
 
         try {
-            String defaultProvider = "geminiProvider"; // Gemini é bom para extração de JSON
+            String defaultProvider = "ollamaProvider"; // Ollama é bom para extração de JSON
             ChatRequest chatRequest = new ChatRequest(metaPrompt, defaultProvider, null, null);
             AIProviderResponse response = aiOrchestrationService.handleChatInteraction(chatRequest).get();
 

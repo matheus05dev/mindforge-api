@@ -78,7 +78,7 @@ public class CodeAnalysisService {
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
         try {
-            String defaultProvider = "geminiProvider";
+            String defaultProvider = "ollamaProvider";
             AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(), null, defaultProvider);
             
             AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(providerRequest.toChatRequest(defaultProvider)).get();
