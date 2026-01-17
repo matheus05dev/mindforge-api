@@ -1,9 +1,11 @@
 package com.matheusdev.mindforge.note.service;
 
-import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
+import com.matheusdev.mindforge.ai.dto.ChatRequest;
+import com.matheusdev.mindforge.ai.dto.PromptPair;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
+import com.matheusdev.mindforge.ai.service.AIOrchestrationService;
 import com.matheusdev.mindforge.ai.service.PromptBuilderService;
-import com.matheusdev.mindforge.ai.service.PromptCacheService;
+import com.matheusdev.mindforge.exception.BusinessException;
 import com.matheusdev.mindforge.note.dto.NoteAIRequestDTO;
 import com.matheusdev.mindforge.note.dto.NoteResponseDTO;
 import com.matheusdev.mindforge.note.mapper.NoteMapper;
@@ -13,13 +15,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.ExecutionException;
+
 @Service
 @RequiredArgsConstructor
 public class NoteAIService {
 
     private final NoteRepository noteRepository;
     private final PromptBuilderService promptBuilderService;
-    private final PromptCacheService promptCacheService;
+    private final AIOrchestrationService aiOrchestrationService;
     private final NoteMapper noteMapper;
 
     @Transactional
@@ -27,23 +31,23 @@ public class NoteAIService {
         Note note = noteRepository.findById(noteId)
                 .orElseThrow(() -> new RuntimeException("Nota não encontrada"));
 
-        String prompt = promptBuilderService.buildContentModificationPrompt(note.getContent(), requestDTO.getInstruction());
-        
-        // Usando uma mensagem de sistema padrão e modelo por enquanto, similar à análise genérica
-        String systemMessage = "Você é um assistente de IA útil especializado em edição e melhoria de texto.";
-        String model = "gemini-pro"; // Padronizando para um modelo conhecido ou poderia ser dinâmico
-        
-        AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemMessage, model, null);
-        AIProviderResponse aiResponse = promptCacheService.executeRequest(aiRequest);
+        PromptPair prompts = promptBuilderService.buildContentModificationPrompt(note.getContent(), requestDTO.getInstruction());
 
-        if (aiResponse.getError() != null) {
-            throw new RuntimeException("Erro no Serviço de IA: " + aiResponse.getError());
+        try {
+            ChatRequest chatRequest = new ChatRequest(prompts.userPrompt(), requestDTO.getProvider(), null, prompts.systemPrompt());
+            AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(chatRequest).get();
+
+            if (aiResponse.getError() != null) {
+                throw new BusinessException("Erro no Serviço de IA: " + aiResponse.getError());
+            }
+
+            note.setContent(aiResponse.getContent());
+            Note updatedNote = noteRepository.save(note);
+
+            return noteMapper.toDTO(updatedNote);
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("Falha ao processar a nota com IA.", e);
         }
-
-        // Atualiza o conteúdo da nota com a resposta da IA
-        note.setContent(aiResponse.getContent());
-        Note updatedNote = noteRepository.save(note);
-
-        return noteMapper.toDTO(updatedNote);
     }
 }

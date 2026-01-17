@@ -22,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -79,12 +80,26 @@ public class GroqProvider implements AIProvider {
 
             List<GroqRequest.Message> messages = new ArrayList<>();
             messages.add(new GroqRequest.Message("system", SYSTEM_INSTRUCTION));
-            messages.add(new GroqRequest.Message("user", request.textPrompt()));
+
+            Object messageContent;
+            if (request.multimodal() && request.imageData() != null) {
+                List<GroqRequest.ContentPart> contentParts = new ArrayList<>();
+                contentParts.add(GroqRequest.ContentPart.fromText(request.textPrompt()));
+
+                String base64Image = Base64.getEncoder().encodeToString(request.imageData());
+                String dataUri = "data:" + request.imageMimeType() + ";base64," + base64Image;
+                contentParts.add(GroqRequest.ContentPart.fromImageUrl(dataUri));
+
+                messageContent = contentParts;
+            } else {
+                messageContent = request.textPrompt();
+            }
+            messages.add(new GroqRequest.Message("user", messageContent));
 
             GroqRequest groqRequest = new GroqRequest(
                     selectedModel.getModelName(),
                     messages,
-                    false, // Stream desativado para receber JSON completo
+                    false,
                     1.0,
                     selectedModel.getMaxTokens(),
                     1.0,

@@ -4,6 +4,7 @@ import com.matheusdev.mindforge.ai.chat.model.ChatMessage;
 import com.matheusdev.mindforge.ai.chat.model.ChatSession;
 import com.matheusdev.mindforge.ai.dto.CodeAnalysisRequest;
 import com.matheusdev.mindforge.ai.dto.GitHubFileAnalysisRequest;
+import com.matheusdev.mindforge.ai.dto.PromptPair;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
 import com.matheusdev.mindforge.ai.memory.service.MemoryService;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
@@ -30,6 +31,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 @Service
 @RequiredArgsConstructor
@@ -41,11 +43,10 @@ public class CodeAnalysisService {
     private final MemoryService memoryService;
     private final PromptBuilderService promptBuilderService;
     private final ChatService chatService;
-    private final PromptCacheService promptCacheService;
     private final ProjectRepository projectRepository;
     private final UserIntegrationRepository userIntegrationRepository;
     private final GitHubClient gitHubClient;
-    private final AIContextService aiContextService;
+    private final AIOrchestrationService aiOrchestrationService;
 
     @Transactional
     public ChatMessage analyzeCodeForProficiency(CodeAnalysisRequest request) throws IOException {
@@ -54,52 +55,50 @@ public class CodeAnalysisService {
                 .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + request.getSubjectId()));
         String code = getCodeFromRequest(request);
         UserProfileAI userProfile = memoryService.getProfile(userId);
-        String profileSummary = userProfile.getSummary();
 
-        // Constrói o System Message com base no perfil
-        String baseRole = request.getMode().name(); // Ex: MENTOR, ANALYST
-        String systemMessage = aiContextService.buildSystemMessage(userProfile, baseRole);
-        
-        // Seleciona o modelo (Análise de código geralmente é complexa)
-        // Passando null como provider para usar o padrão (Groq)
-        String model = aiContextService.selectModel(userProfile, true, null);
-
-        String prompt;
+        PromptPair prompts;
         switch (request.getMode()) {
             case ANALYST:
-                prompt = promptBuilderService.buildAnalystPrompt(code, subject, profileSummary);
+                prompts = promptBuilderService.buildAnalystPrompt(code);
                 break;
             case DEBUG_ASSISTANT:
-                prompt = promptBuilderService.buildDebugAssistantPrompt(code);
+                prompts = promptBuilderService.buildDebugAssistantPrompt(code);
                 break;
             case SOCRATIC_TUTOR:
-                prompt = promptBuilderService.buildSocraticTutorPrompt(code);
+                prompts = promptBuilderService.buildSocraticTutorPrompt(code);
                 break;
             case MENTOR:
             default:
-                prompt = promptBuilderService.buildMentorPrompt(code, subject, profileSummary);
+                prompts = promptBuilderService.buildMentorPrompt(code, userProfile, subject);
                 break;
         }
 
         ChatSession session = chatService.getOrCreateChatSession(subject, request.getMode().name());
-        ChatMessage userMessage = chatService.saveMessage(session, "user", prompt);
+        // Salva o prompt do usuário, que é mais significativo para o histórico
+        ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
-        // Cria a requisição enriquecida com System Message e Modelo
-        AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemMessage, model);
-        AIProviderResponse aiResponse = promptCacheService.executeRequest(aiRequest);
+        try {
+            String defaultProvider = "geminiProvider";
+            AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(), null, defaultProvider);
+            
+            AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(providerRequest.toChatRequest(defaultProvider)).get();
 
-        if (aiResponse.getError() != null) {
-            throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
+            if (aiResponse.getError() != null) {
+                throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
+            }
+
+            ChatMessage assistantMessage = chatService.saveMessage(session, "assistant", aiResponse.getContent());
+
+            List<Map<String, String>> chatHistory = new ArrayList<>();
+            chatHistory.add(Map.of("role", "user", "content", userMessage.getContent()));
+            chatHistory.add(Map.of("role", "assistant", "content", assistantMessage.getContent()));
+            memoryService.updateUserProfile(userId, chatHistory);
+
+            return assistantMessage;
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("Erro ao processar a análise de código com o serviço de IA.", e);
         }
-
-        ChatMessage assistantMessage = chatService.saveMessage(session, "assistant", aiResponse.getContent());
-
-        List<Map<String, String>> chatHistory = new ArrayList<>();
-        chatHistory.add(Map.of("role", "user", "content", userMessage.getContent()));
-        chatHistory.add(Map.of("role", "assistant", "content", assistantMessage.getContent()));
-        memoryService.updateUserProfile(userId, chatHistory);
-
-        return assistantMessage;
     }
 
     @Transactional

@@ -5,6 +5,7 @@ import com.matheusdev.mindforge.ai.dto.*;
 import com.matheusdev.mindforge.ai.service.AIService;
 import com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeItemResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,8 +46,11 @@ public class AIRestController {
 
     @Operation(summary = "Análise Genérica de Conhecimento", description = "Envia uma pergunta ou problema de qualquer área (matemática, gestão, etc.) para a IA resolver ou explicar.")
     @PostMapping("/analyze/generic")
-    public ResponseEntity<ChatMessage> analyzeGeneric(@RequestBody @Valid GenericAnalysisRequest request) {
-        ChatMessage responseMessage = aiService.analyzeGeneric(request);
+    public ResponseEntity<ChatMessage> analyzeGeneric(
+            @RequestBody @Valid GenericAnalysisRequest request,
+            @Parameter(description = "Provedor de IA a ser usado (ex: 'geminiProvider', 'groqProvider'). Padrão: 'geminiProvider'.")
+            @RequestParam(value = "provider", required = false) String provider) {
+        ChatMessage responseMessage = aiService.analyzeGeneric(request, provider);
         return ResponseEntity.ok(responseMessage);
     }
 
@@ -54,8 +58,10 @@ public class AIRestController {
     @PostMapping("/edit/knowledge-item/{itemId}")
     public ResponseEntity<KnowledgeItemResponse> modifyKnowledgeItemContent(
             @PathVariable Long itemId,
-            @RequestBody @Valid ContentModificationRequest request) {
-        KnowledgeItemResponse updatedItem = aiService.modifyKnowledgeItemContent(itemId, request.getInstruction());
+            @RequestBody @Valid ContentModificationRequest request,
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'geminiProvider'.")
+            @RequestParam(value = "provider", required = false) String provider) {
+        KnowledgeItemResponse updatedItem = aiService.modifyKnowledgeItemContent(itemId, request.getInstruction(), provider);
         return ResponseEntity.ok(updatedItem);
     }
 
@@ -63,9 +69,11 @@ public class AIRestController {
     @PostMapping("/transcribe/document/{documentId}/to-item/{itemId}")
     public ResponseEntity<KnowledgeItemResponse> transcribeImageToKnowledgeItem(
             @PathVariable Long documentId,
-            @PathVariable Long itemId) {
+            @PathVariable Long itemId,
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'geminiProvider'.")
+            @RequestParam(value = "provider", required = false) String provider) {
         try {
-            KnowledgeItemResponse updatedItem = aiService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId);
+            KnowledgeItemResponse updatedItem = aiService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId, provider);
             return ResponseEntity.ok(updatedItem);
         } catch (IOException e) {
             return ResponseEntity.status(500).build();
