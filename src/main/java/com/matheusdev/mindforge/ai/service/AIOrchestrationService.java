@@ -1,5 +1,7 @@
 package com.matheusdev.mindforge.ai.service;
 
+import com.matheusdev.mindforge.ai.chat.model.ChatMessage;
+import com.matheusdev.mindforge.ai.chat.model.ChatSession;
 import com.matheusdev.mindforge.ai.dto.ChatRequest;
 import com.matheusdev.mindforge.ai.dto.PromptPair;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;
@@ -13,13 +15,17 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 
@@ -36,6 +42,7 @@ public class AIOrchestrationService {
     private final Map<String, AIProvider> aiProviders;
     private final MemoryService memoryService;
     private final PromptBuilderService promptBuilderService;
+    private final ChatService chatService;
     
     // Define o provedor padrão caso nenhum seja especificado
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
@@ -67,6 +74,7 @@ public class AIOrchestrationService {
     /**
      * Gerencia a análise de arquivos (PDF, Imagens, etc.).
      * Se for texto longo, aplica o padrão Map-Reduce (divide, processa, junta).
+     * Salva as mensagens no banco de dados para RAG.
      */
     public CompletableFuture<AIProviderResponse> handleFileAnalysis(String userPrompt, String providerName, MultipartFile file) throws IOException {
         log.info(">>> [ORCHESTRATOR] Iniciando análise de arquivo: {}", file.getOriginalFilename());
@@ -77,6 +85,15 @@ public class AIOrchestrationService {
 
         String selectedProviderName = getProviderName(providerName);
         AIProvider selectedProvider = getProvider(selectedProviderName);
+
+        // Cria uma sessão de chat para salvar as mensagens
+        ChatSession session = chatService.createDocumentAnalysisSession(file.getOriginalFilename(), userPrompt);
+        log.info("Sessão de chat criada: {}", session.getId());
+        
+        // Salva a mensagem do usuário (prompt + nome do arquivo)
+        String userMessageContent = String.format("Arquivo: %s\n\nPrompt: %s", file.getOriginalFilename(), userPrompt);
+        ChatMessage userMessage = chatService.saveMessage(session, "user", userMessageContent);
+        log.info("Mensagem do usuário salva no banco: {}", userMessage.getId());
 
         // Constrói o prompt base considerando o perfil do usuário
         PromptPair basePrompts = promptBuilderService.buildGenericPrompt(userPrompt, userProfile, Optional.empty(), Optional.empty());
@@ -97,7 +114,8 @@ public class AIOrchestrationService {
                 null, 
                 null
             );
-            return executeAndLogTask(request, selectedProvider, "análise de imagem");
+            return executeAndLogTask(request, selectedProvider, "análise de imagem")
+                    .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
         
         } else {
             // --- FLUXO PARA DOCUMENTOS DE TEXTO (MAP-REDUCE) ---
@@ -159,9 +177,41 @@ public class AIOrchestrationService {
                 );
 
                 AIProviderRequest reduceRequest = new AIProviderRequest(reducePrompt, basePrompts.systemPrompt(), null, selectedProviderName);
-                return executeAndLogTask(reduceRequest, selectedProvider, "análise final (Reduce)");
+                return executeAndLogTask(reduceRequest, selectedProvider, "análise final (Reduce)")
+                        .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
             });
         }
+    }
+
+
+    /**
+     * Salva a resposta do assistente no banco e atualiza o perfil do usuário.
+     */
+    private CompletableFuture<AIProviderResponse> saveResponseAndUpdateProfile(
+            AIProviderResponse response, 
+            ChatSession session, 
+            ChatMessage userMessage, 
+            Long userId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Salva a resposta do assistente
+                ChatMessage assistantMessage = chatService.saveMessage(session, "assistant", response.getContent());
+                log.info("Resposta do assistente salva no banco: {}", assistantMessage.getId());
+
+                // Atualiza o perfil do usuário para RAG
+                List<Map<String, String>> chatHistory = new ArrayList<>();
+                chatHistory.add(Map.of("role", "user", "content", userMessage.getContent()));
+                chatHistory.add(Map.of("role", "assistant", "content", assistantMessage.getContent()));
+                memoryService.updateUserProfile(userId, chatHistory);
+                log.info("Perfil do usuário atualizado para RAG.");
+
+                return response;
+            } catch (Exception e) {
+                log.error("Erro ao salvar resposta no banco ou atualizar perfil: {}", e.getMessage(), e);
+                // Retorna a resposta mesmo se houver erro ao salvar
+                return response;
+            }
+        });
     }
 
     /**

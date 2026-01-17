@@ -50,8 +50,10 @@ public class ResilienceConfig {
 
     @Bean
     public TimeLimiterRegistry timeLimiterRegistry() {
+        // Timeout aumentado para 180 segundos para dar tempo ao Ollama processar
+        // especialmente na primeira chamada quando o modelo precisa ser carregado
         TimeLimiterConfig config = TimeLimiterConfig.custom()
-                .timeoutDuration(Duration.ofSeconds(5))
+                .timeoutDuration(Duration.ofSeconds(180))
                 .build();
         return TimeLimiterRegistry.of(config);
     }
