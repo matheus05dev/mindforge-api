@@ -115,10 +115,39 @@ ollama run nomic-embed-text "Hello world"
 
 A aplicação já está configurada para usar Ollama. As configurações estão em `application.properties`:
 
+### Configuração de Chat (llama3.2)
+
+```properties
+# URL da API do Ollama
+ollama.api.url=http://localhost:11434/api/chat
+
+# Modelo de chat padrão
+ollama.model=llama3.2
+```
+
+### Configuração de Embeddings
+
 ```properties
 spring.ai.ollama.base-url=http://localhost:11434
 spring.ai.ollama.embedding.options.model=nomic-embed-text
 ```
+
+### Configuração de Timeouts
+
+O sistema está configurado com timeouts adequados para o Ollama processar:
+
+```properties
+# Timeout do Resilience4j TimeLimiter (180 segundos)
+resilience4j.timelimiter.instances.aiProvider.timeout-duration=180s
+
+# Timeout de requisições assíncronas do Spring MVC (200 segundos)
+spring.mvc.async.request-timeout=200000
+```
+
+**Por que esses valores?**
+- O Ollama pode demorar mais na primeira chamada (carregamento do modelo)
+- Processamento de documentos grandes pode levar tempo
+- 180-200 segundos garantem que o processamento complete antes de timeout
 
 ## Iniciar Ollama
 
@@ -153,18 +182,49 @@ Para seu caso (RAG com documentos técnicos como System Design):
 
 **Alternativa:** Se preferir algo mais leve, use `nomic-embed-text` (v1).
 
+## Teste do Modelo de Chat
+
+Para testar se o modelo de chat está funcionando:
+
+```bash
+ollama run llama3.2 "teste"
+```
+
+Você deve receber uma resposta do modelo. Se funcionar, o sistema está pronto para usar.
+
+## Salvamento no Banco de Dados (RAG)
+
+O sistema salva automaticamente todas as interações no banco de dados:
+
+- **Sessões de Chat**: Cada análise de documento cria uma sessão
+- **Mensagens**: Tanto o prompt do usuário quanto a resposta do assistente são salvos
+- **Perfil do Usuário**: O histórico é usado para melhorar futuras respostas (RAG)
+
+Isso permite que o sistema:
+- Use contexto de conversas anteriores
+- Melhore respostas baseadas no histórico
+- Implemente RAG (Retrieval-Augmented Generation)
+
 ## Troubleshooting
 
 ### Ollama não está rodando
 - Verifique se o serviço está ativo: `ollama list`
 - Tente iniciar manualmente: `ollama serve`
+- No Windows, verifique o Gerenciador de Tarefas para processos "ollama"
 
 ### Erro de conexão
 - Verifique se o Ollama está na porta 11434
 - Verifique o firewall
+- Teste manualmente: `curl http://localhost:11434/api/tags`
 
 ### Modelo não encontrado
-- Certifique-se de ter baixado o modelo: `ollama pull nomic-embed-text`
+- Certifique-se de ter baixado o modelo: `ollama pull llama3.2`
+- Verifique com: `ollama list`
+
+### Timeout nas requisições
+- Se estiver recebendo timeouts, verifique se os valores em `application.properties` estão corretos
+- Aumente o timeout se necessário (especialmente para documentos muito grandes)
+- Primeira chamada sempre demora mais (carregamento do modelo)
 
 ## Vantagens do Ollama
 

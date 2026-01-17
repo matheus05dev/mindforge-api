@@ -563,16 +563,32 @@ sequenceDiagram
 O projeto utiliza `RestTemplate` para todas as chamadas HTTP externas:
 
 **Configuração Atual**:
-- Injeção via construtor em cada provider/client
-- Sem configuração global (padrão Spring Boot)
+- Bean global configurado em `AIProviderConfig`
+- Timeouts HTTP configurados adequadamente
 
 **Características**:
 - **Serialização**: JSON automático via Jackson
-- **Error Handling**: Exceções HTTP tratadas localmente
-- **Timeouts**: Não configurados (usa padrão JVM)
+- **Error Handling**: Exceções HTTP tratadas localmente com logs detalhados
+- **Timeouts HTTP**:
+  - Connect Timeout: 5 segundos
+  - Read Timeout: 180 segundos (permite tempo suficiente para Ollama processar)
+
+**Configuração em `AIProviderConfig.java`**:
+```java
+@Bean
+public RestTemplate restTemplate(RestTemplateBuilder builder) {
+    return builder
+            .setConnectTimeout(Duration.ofSeconds(5))
+            .setReadTimeout(Duration.ofSeconds(180))
+            .build();
+}
+```
+
+**Timeouts de Requisições Assíncronas**:
+- Spring MVC Async Request Timeout: 200 segundos
+- Configurado em `application.properties`: `spring.mvc.async.request-timeout=200000`
 
 **Recomendações Futuras**:
-- Configurar timeouts globais
 - Implementar interceptors para logging
 - Considerar migração para WebClient (reativo)
 

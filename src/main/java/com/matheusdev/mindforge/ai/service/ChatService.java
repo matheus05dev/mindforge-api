@@ -56,4 +56,17 @@ public class ChatService {
         message.setContent(content);
         return chatMessageRepository.save(message);
     }
+
+    @Transactional
+    public ChatSession createDocumentAnalysisSession(String fileName, String userPrompt) {
+        ChatSession session = new ChatSession();
+        String title = String.format("Análise de Documento: %s", fileName);
+        if (userPrompt != null && userPrompt.length() > 0) {
+            String promptPreview = userPrompt.substring(0, Math.min(userPrompt.length(), 30));
+            title = String.format("Análise: %s - %s...", fileName, promptPreview);
+        }
+        session.setTitle(title);
+        session.setCreatedAt(LocalDateTime.now());
+        return chatSessionRepository.save(session);
+    }
 }

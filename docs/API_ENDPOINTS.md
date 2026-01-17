@@ -1003,6 +1003,52 @@ Pensa como um Gerente de Produto (análise de funcionalidade).
 
 ---
 
+### POST `/v1/ai/document/analyze`
+Analisa um documento (PDF, DOCX, TXT, imagens) com um prompt de texto usando IA.
+
+**Formato:** `multipart/form-data`
+
+**Parâmetros:**
+- `file` (obrigatório): Arquivo do documento a ser analisado
+- `prompt` (obrigatório): Prompt de texto para guiar a análise da IA
+- `provider` (opcional): Provedor de IA a ser usado. Opções: `ollamaProvider` (padrão), `groqProvider`
+
+**Comportamento:**
+- **Documentos de texto**: Aplica padrão Map-Reduce para processar documentos grandes
+  - Divide o documento em chunks menores
+  - Processa cada chunk em paralelo (Map)
+  - Consolida as respostas em um relatório final (Reduce)
+- **Imagens**: Processa diretamente com modelo multimodal
+- **Salvamento automático**: Todas as interações são salvas no banco de dados para RAG
+  - Cria uma sessão de chat
+  - Salva o prompt do usuário
+  - Salva a resposta do assistente
+  - Atualiza o perfil do usuário
+
+**Exemplo de requisição (cURL):**
+```bash
+curl -X POST "http://localhost:8080/v1/ai/document/analyze" \
+  -F "file=@documento.pdf" \
+  -F "prompt=Faça uma auditoria técnica deste documento" \
+  -F "provider=ollamaProvider"
+```
+
+**Resposta:**
+```json
+{
+  "content": "Análise completa do documento...",
+  "error": null
+}
+```
+
+**Notas:**
+- O processamento pode levar vários segundos (especialmente na primeira chamada)
+- Timeout configurado para 180-200 segundos para dar tempo ao Ollama processar
+- Se o Ollama falhar, o sistema faz fallback automático para Groq
+- Todas as mensagens são salvas em `chat_session` e `chat_message` para RAG
+
+---
+
 ## 🔗 Integrations
 
 ### GET `/api/integrations/github/connect`

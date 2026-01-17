@@ -504,7 +504,7 @@ flowchart TD
 | **Rate Limiter** | Limit Refresh Period | 1s | Período de renovação do limite |
 | | Limit For Period | 10 | Chamadas máximas por período |
 | | Timeout Duration | 500ms | Tempo máximo de espera por slot |
-| **Time Limiter** | Timeout Duration | 5s | Tempo máximo de espera por resposta |
+| **Time Limiter** | Timeout Duration | 180s | Tempo máximo de espera por resposta (aumentado para Ollama) |
 
 **Instâncias de Resiliência**:
 - `aiProvider`: Provedores de IA (Gemini, Groq)
@@ -562,6 +562,20 @@ O sistema implementa orquestração inteligente para selecionar o provedor/model
 - **Custo-Benefício**: Balanceamento entre qualidade e custo
 
 ### 7.2. Provedores Implementados
+
+#### Ollama (Local)
+- **Forças**: Gratuito, privado, funciona offline, sem limites de API
+- **Uso**: Análise de documentos, chat geral, processamento local
+- **Latência**: Média (depende do hardware local)
+- **Custo**: Zero (100% gratuito)
+- **Modelos Suportados**: 
+  - Chat: `llama3.2` (padrão)
+  - Embeddings: `nomic-embed-text`, `nomic-embed-text-v2-moe`
+- **Configuração**: 
+  - URL: `http://localhost:11434/api/chat`
+  - Timeout: 180 segundos (permite processamento completo)
+  - Fallback: Groq (se Ollama falhar ou timeout)
+- **Salvamento no Banco**: Todas as interações são salvas automaticamente para RAG
 
 #### Google Gemini
 - **Forças**: Multimodalidade, raciocínio complexo, análise profunda
@@ -690,10 +704,40 @@ sequenceDiagram
 O `AIOrchestratorService` implementa roteamento entre provedores:
 
 - **Primary-Fallback**: Provedor primário com fallback automático para secundário
-- **Task-Based Routing**: Roteamento baseado em tipo de tarefa (multimodal → Gemini, texto → Groq)
+  - **Ollama** (padrão) → **Groq** (fallback se Ollama falhar)
+- **Task-Based Routing**: Roteamento baseado em tipo de tarefa (multimodal → Gemini, texto → Ollama/Groq)
 - **Load-Aware Selection**: Seleção baseada em carga do sistema (futuro)
 - **Cost Optimization**: Seleção considerando custo-benefício (futuro)
 - **User Preference**: Respeita preferência do usuário (`preferredProvider` na requisição)
+
+### 7.6. Salvamento no Banco de Dados e RAG
+
+O sistema salva automaticamente todas as interações no banco de dados para habilitar RAG (Retrieval-Augmented Generation):
+
+**Fluxo de Salvamento:**
+
+1. **Criação de Sessão**: Cada análise cria uma `ChatSession` no banco
+2. **Salvamento de Mensagens**: 
+   - Mensagem do usuário (prompt + contexto) → `ChatMessage` com role "user"
+   - Resposta do assistente → `ChatMessage` com role "assistant"
+3. **Atualização de Perfil**: Histórico é usado para atualizar `UserProfileAI`
+4. **Uso em RAG**: Histórico é consultado em futuras interações para contexto
+
+**Benefícios:**
+- **Contexto Persistente**: Sistema lembra de conversas anteriores
+- **Melhoria Contínua**: Respostas melhoram com base no histórico
+- **RAG**: Permite busca semântica em conversas anteriores
+- **Análise**: Histórico completo para análise e métricas
+
+**Tabelas Envolvidas:**
+- `chat_session`: Sessões de conversa
+- `chat_message`: Mensagens individuais (user/assistant)
+- `user_profile_ai`: Perfil do usuário com histórico estruturado
+
+**Implementação:**
+- Endpoint `/v1/ai/document/analyze` salva automaticamente
+- Outros endpoints de IA também salvam (ex: `/api/ai/analyze/generic`)
+- Processo assíncrono para não bloquear resposta ao usuário
 
 ---
 

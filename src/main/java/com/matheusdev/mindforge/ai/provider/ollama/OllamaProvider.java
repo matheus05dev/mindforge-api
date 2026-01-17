@@ -83,6 +83,8 @@ public class OllamaProvider implements AIProvider {
                 // ---------------------------------------------------
 
                 if (response != null && response.message() != null) {
+                    log.info("✅ [OLLAMA] Resposta recebida com sucesso! Tamanho da resposta: {} caracteres", 
+                            response.message().content() != null ? response.message().content().length() : 0);
                     return new AIProviderResponse(response.message().content(), null);
                 }
                 
@@ -92,8 +94,14 @@ public class OllamaProvider implements AIProvider {
             } catch (JsonProcessingException e) {
                 log.error("Erro ao serializar JSON para debug", e);
                 throw new RuntimeException("Erro interno de serialização JSON", e);
+            } catch (org.springframework.web.client.ResourceAccessException e) {
+                log.error("Erro de conexão com Ollama em {}: {}. Verifique se o Ollama está rodando.", apiUrl, e.getMessage());
+                throw new RuntimeException("Não foi possível conectar ao Ollama. Verifique se o serviço está rodando em " + apiUrl, e);
+            } catch (org.springframework.web.client.HttpClientErrorException | org.springframework.web.client.HttpServerErrorException e) {
+                log.error("Erro HTTP ao comunicar com Ollama: Status {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+                throw new RuntimeException("Erro HTTP ao comunicar com Ollama: " + e.getStatusCode(), e);
             } catch (Exception e) {
-                log.error("Erro ao comunicar com Ollama: {}", e.getMessage());
+                log.error("Erro ao comunicar com Ollama: {} - {}", e.getClass().getSimpleName(), e.getMessage(), e);
                 throw e;
             }
         });
