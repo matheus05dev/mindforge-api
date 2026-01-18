@@ -12,6 +12,7 @@ import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -25,9 +26,11 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
 @Service("groqProvider")
 @RequiredArgsConstructor
+@Slf4j
 public class GroqProvider implements AIProvider {
 
     private final RestTemplate restTemplate;
@@ -66,10 +69,10 @@ public class GroqProvider implements AIProvider {
     private static final String SYSTEM_INSTRUCTION = "Você é um assistente prestativo. Responda sempre em português do Brasil (pt-BR).";
 
     @Override
-    @CircuitBreaker(name = ResilienceConfig.AI_PROVIDER_INSTANCE, fallbackMethod = "fallback")
-    @RateLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
-    @Retry(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
-    @TimeLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
+    @CircuitBreaker(name = ResilienceConfig.GROQ_INSTANCE, fallbackMethod = "fallback")
+    @RateLimiter(name = ResilienceConfig.GROQ_INSTANCE)
+    @Retry(name = ResilienceConfig.GROQ_INSTANCE)
+    @TimeLimiter(name = ResilienceConfig.GROQ_INSTANCE)
     public CompletableFuture<AIProviderResponse> executeTask(AIProviderRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             HttpHeaders headers = new HttpHeaders();
@@ -119,6 +122,8 @@ public class GroqProvider implements AIProvider {
     }
 
     public CompletableFuture<AIProviderResponse> fallback(AIProviderRequest request, Throwable t) {
-        return CompletableFuture.completedFuture(new AIProviderResponse(null, "Serviço de IA (Groq) indisponível no momento. Causa: " + t.getMessage()));
+        log.error("!!! ALERTA !!! Serviço de IA (Groq) indisponível ou falhou. Causa: {}", t.getMessage());
+        String errorMessage = "Desculpe, não foi possível processar sua solicitação no momento devido a uma instabilidade no serviço de IA (Groq). Erro: " + t.getMessage();
+        return CompletableFuture.completedFuture(new AIProviderResponse(errorMessage, errorMessage));
     }
 }

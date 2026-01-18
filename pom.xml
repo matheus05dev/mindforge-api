@@ -108,6 +108,18 @@
             <artifactId>langchain4j-spring-boot-starter</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+        <!-- LangChain4j - Document Loader para DocumentSplitters -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-document-loader</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <!-- LangChain4j - Embedding Store In-Memory -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings-store</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
 
         <!-- Development Tools -->
         <dependency>

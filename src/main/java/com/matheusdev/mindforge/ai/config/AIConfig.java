@@ -7,22 +7,22 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
- * Configuração de modelos de embedding usando Spring AI
- * Remove dependência do HuggingFace que estava com problemas de URL
+ * Configuração de modelos de embedding usando Ollama via LangChain4j.
+ * Usa OllamaEmbeddingModel que chama a API do Ollama diretamente.
  */
 @Configuration
 @RequiredArgsConstructor
 public class AIConfig {
 
-    private final EmbeddingAdapter embeddingAdapter;
+    private final OllamaEmbeddingModel ollamaEmbeddingModel;
 
     @Bean
     @Primary
     public EmbeddingModel embeddingModel() {
-        // Usa Spring AI EmbeddingClient através do adapter
-        // Configuração da API está em application.properties:
-        // spring.ai.openai.api-key=...
-        // spring.ai.openai.embedding.options.model=text-embedding-3-small
-        return embeddingAdapter;
+        // Usa OllamaEmbeddingModel que chama a API do Ollama diretamente
+        // Configuração está em application.properties:
+        // ollama.embedding.base-url=http://localhost:11434
+        // ollama.embedding.model=nomic-embed-text
+        return ollamaEmbeddingModel;
     }
 }

@@ -9,6 +9,6 @@ public class DocumentResponse {
     private Long id;
     private String fileName;
     private String fileType;
-    private String downloadUri;
     private LocalDateTime uploadDate;
+    private String downloadUri;
 }
