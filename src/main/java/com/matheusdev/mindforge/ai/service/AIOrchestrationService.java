@@ -9,6 +9,7 @@ import com.matheusdev.mindforge.ai.memory.service.MemoryService;
 import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
+import com.matheusdev.mindforge.ai.service.model.InteractionType;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.segment.TextSegment;
@@ -39,6 +40,7 @@ public class AIOrchestrationService {
     private final ChatService chatService;
     private final SmartRouterService smartRouterService;
     private final RAGService ragService;
+    private final DocumentAnalyzer documentAnalyzer;
 
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
     private static final String FALLBACK_PROVIDER = "groqProvider";
@@ -135,7 +137,7 @@ public class AIOrchestrationService {
                     null
             );
             return executeAndLogTask(request, selectedProvider, "análise de imagem")
-                    .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
+                    .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId, InteractionType.DOCUMENT_ANALYSIS));
 
         } else {
             String documentId = file.getOriginalFilename() != null ? file.getOriginalFilename() : "document_" + System.currentTimeMillis();
@@ -145,7 +147,7 @@ public class AIOrchestrationService {
 
             return switch (strategy) {
                 case ONE_SHOT -> processOneShot(mainDocument.text(), new PromptPair(finalSystemPrompt, basePrompts.userPrompt()), selectedProvider, selectedProviderName, userPrompt)
-                        .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
+                        .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId, InteractionType.DOCUMENT_ANALYSIS));
                 
                 case MAP_REDUCE -> {
                     log.info("Iniciando fluxo Map-Reduce para texto.");
@@ -157,11 +159,11 @@ public class AIOrchestrationService {
                     } else {
                         result = processChunksWithRateLimit(langchainDocuments, new PromptPair(finalSystemPrompt, basePrompts.userPrompt()), selectedProvider, selectedProviderName, userPrompt);
                     }
-                    yield result.thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
+                    yield result.thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId, InteractionType.DOCUMENT_ANALYSIS));
                 }
                 
                 case RAG -> processWithRAG(documentId, mainDocument, userPrompt, new PromptPair(finalSystemPrompt, basePrompts.userPrompt()), selectedProvider, selectedProviderName)
-                        .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId));
+                        .thenCompose(response -> saveResponseAndUpdateProfile(response, session, userMessage, userId, InteractionType.RAG_ANALYSIS));
             };
         }
     }
@@ -310,9 +312,23 @@ public class AIOrchestrationService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // Reduzir maxResults para economizar tokens
+                DocumentAnalyzer.DocumentProfile profile = documentAnalyzer.analyzeDocument(document.text());
+
+                String systemPrompt = basePrompts.systemPrompt();
+                if (profile.numericInferenceRisk) {
+                    log.warn("⚠️ Risco de inferência numérica detectado! Injetando prompt de segurança.");
+                    systemPrompt += "\n\n" +
+                            "⚠️ Documento contém expressões matemáticas e fórmulas.\n" +
+                            "É estritamente proibido:\n" +
+                            "- realizar cálculos\n" +
+                            "- interpretar intervalos\n" +
+                            "- inferir porcentagens\n" +
+                            "- deduzir métricas não explicitamente escritas\n" +
+                            "Somente valores numéricos LITERALMENTE presentes no texto natural podem ser citados.";
+                }
+
                 List<TextSegment> relevantSegments = ragService.processQueryWithRAG(
-                        documentId, document, userPrompt, 8 // Reduzido de 15 para 8
+                        documentId, document, userPrompt, 8
                 );
 
                 if (relevantSegments.isEmpty()) {
@@ -324,26 +340,22 @@ public class AIOrchestrationService {
                     );
                     AIProviderRequest fallbackRequest = new AIProviderRequest(
                             fallbackPrompt,
-                            basePrompts.systemPrompt(),
+                            systemPrompt,
                             null,
                             providerName
                     );
                     return executeAndLogTask(fallbackRequest, provider, "análise RAG (fallback)").get();
                 }
 
-                // Formatar segmentos com METADADOS OTIMIZADOS
                 String segmentsText = relevantSegments.stream()
                         .map(segment -> {
                             Map<String, Object> metadata = segment.metadata().toMap();
-                            
-                            // Metadados mais concisos
                             String metadataStr = String.format(
                                 "[S:%s|T:%s%s]",
                                 metadata.getOrDefault("section", "-"),
                                 metadata.getOrDefault("content_type", "txt"),
                                 metadata.containsKey("has_table") ? "|tbl" : ""
                             );
-                            
                             return String.format(
                                 "\n-- Trecho %s --\n%s\n",
                                 metadataStr,
@@ -352,7 +364,6 @@ public class AIOrchestrationService {
                         })
                         .collect(Collectors.joining());
 
-                // PROMPT RAG OTIMIZADO PARA TOKENS
                 String ragPrompt = String.format(
                     """
                     **Instrução:** Você é um analista de documentos. Responda à pergunta do usuário usando APENAS os trechos fornecidos.
@@ -377,7 +388,7 @@ public class AIOrchestrationService {
 
                 AIProviderRequest ragRequest = new AIProviderRequest(
                         ragPrompt,
-                        basePrompts.systemPrompt(),
+                        systemPrompt,
                         null,
                         providerName
                 );
@@ -398,7 +409,8 @@ public class AIOrchestrationService {
             AIProviderResponse response,
             ChatSession session,
             ChatMessage userMessage,
-            Long userId) {
+            Long userId,
+            InteractionType type) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String contentToSave = response.getContent();
@@ -409,11 +421,17 @@ public class AIOrchestrationService {
                 ChatMessage assistantMessage = chatService.saveMessage(session, "assistant", contentToSave);
                 log.info("Resposta do assistente salva no banco: {}", assistantMessage.getId());
 
-                List<Map<String, String>> chatHistory = new ArrayList<>();
-                chatHistory.add(Map.of("role", "user", "content", userMessage.getContent()));
-                chatHistory.add(Map.of("role", "assistant", "content", contentToSave));
-                memoryService.updateUserProfile(userId, chatHistory);
-                log.info("Perfil do usuário atualizado para RAG.");
+                if (type == InteractionType.CHAT) {
+                    List<Map<String, String>> chatHistory = List.of(
+                        Map.of("role", "user", "content", userMessage.getContent()),
+                        Map.of("role", "assistant", "content", contentToSave)
+                    );
+
+                    memoryService.updateUserProfile(userId, chatHistory);
+                    log.info("Perfil do usuário atualizado (CHAT).");
+                } else {
+                    log.info("Memória ignorada para interação do tipo {}", type);
+                }
 
                 return response;
             } catch (Exception e) {
