@@ -54,10 +54,10 @@ public class OllamaProvider implements AIProvider {
      * Aplica padrões de resiliência (Circuit Breaker, Retry, etc.).
      */
     @Override
-    @CircuitBreaker(name = ResilienceConfig.AI_PROVIDER_INSTANCE, fallbackMethod = "fallback")
-    @RateLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
-    @Retry(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
-    @TimeLimiter(name = ResilienceConfig.AI_PROVIDER_INSTANCE)
+    @CircuitBreaker(name = ResilienceConfig.OLLAMA_INSTANCE, fallbackMethod = "fallback")
+    @RateLimiter(name = ResilienceConfig.OLLAMA_INSTANCE)
+    @Retry(name = ResilienceConfig.OLLAMA_INSTANCE)
+    @TimeLimiter(name = ResilienceConfig.OLLAMA_INSTANCE)
     public CompletableFuture<AIProviderResponse> executeTask(AIProviderRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {

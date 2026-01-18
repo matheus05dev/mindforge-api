@@ -53,6 +53,11 @@ public class MemoryService {
 
         String metaPrompt = buildProfileUpdatePrompt(chatHistory);
 
+        if (metaPrompt == null) {
+            log.info("Nenhuma interação válida para atualizar o perfil do usuário {}. A atualização foi abortada.", userId);
+            return;
+        }
+
         try {
             String defaultProvider = "ollamaProvider"; // Ollama é bom para extração de JSON
             ChatRequest chatRequest = new ChatRequest(metaPrompt, defaultProvider, null, null);
@@ -85,8 +90,46 @@ public class MemoryService {
 
     private String buildProfileUpdatePrompt(List<Map<String, String>> chatHistory) {
         StringBuilder historyStr = new StringBuilder();
+        List<String> systemErrorKeywords = List.of(
+                "429 Too Many Requests",
+                "CircuitBreaker",
+                "instabilidade no serviço",
+                "indisponível ou falhou"
+        );
+        List<String> assistantDenialKeywords = List.of(
+                "não encontrei",
+                "não há menção",
+                "não foi possível fornecer",
+                "não há menção explícita",
+                "não pôde ser obtido"
+        );
+
         for (Map<String, String> message : chatHistory) {
-            historyStr.append(String.format("[%s]: %s\n", message.get("role"), message.get("content")));
+            String role = message.get("role");
+            String content = message.get("content");
+
+            // Ignora mensagens de erro do sistema
+            boolean isSystemError = systemErrorKeywords.stream().anyMatch(content::contains);
+            if (isSystemError) {
+                log.debug("Mensagem de erro de sistema ignorada na atualização do perfil.");
+                continue;
+            }
+
+            // Ignora mensagens de negação do assistente (indicativo de falha no RAG)
+            if ("assistant".equals(role)) {
+                String lowerCaseContent = content.toLowerCase();
+                boolean isDenial = assistantDenialKeywords.stream().anyMatch(lowerCaseContent::contains);
+                if (isDenial) {
+                    log.debug("Mensagem de negação do assistente ignorada para proteger o perfil do usuário.");
+                    continue;
+                }
+            }
+
+            historyStr.append(String.format("[%s]: %s\n", role, content));
+        }
+
+        if (historyStr.length() == 0) {
+            return null;
         }
 
         return String.format(
