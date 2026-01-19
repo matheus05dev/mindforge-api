@@ -12,18 +12,21 @@ import java.util.concurrent.TimeUnit;
 public class CacheConfig {
 
     public static final String AI_PROMPTS_CACHE = "ai-prompts";
+    public static final String EMBEDDINGS_CACHE = "embeddings";
+    public static final String RAG_RETRIEVAL_CACHE = "rag-retrieval";
 
     @Bean
     public CacheManager cacheManager() {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager(AI_PROMPTS_CACHE);
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager(AI_PROMPTS_CACHE, EMBEDDINGS_CACHE,
+                RAG_RETRIEVAL_CACHE);
         cacheManager.setCaffeine(caffeineCacheBuilder());
         return cacheManager;
     }
 
     Caffeine<Object, Object> caffeineCacheBuilder() {
         return Caffeine.newBuilder()
-                .expireAfterAccess(1, TimeUnit.HOURS)
-                .maximumSize(500)
-                .recordStats(); // Opcional: para monitorar o cache via JMX
+                .expireAfterAccess(24, TimeUnit.HOURS) // Aumentado para 24h (embeddings mudam pouco)
+                .maximumSize(2000) // Aumentado para 2000 itens
+                .recordStats();
     }
 }

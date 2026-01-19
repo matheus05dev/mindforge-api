@@ -1,10 +1,13 @@
 package com.matheusdev.mindforge.ai.provider.groq;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.provider.groq.dto.GroqRequest;
 import com.matheusdev.mindforge.ai.provider.groq.dto.GroqResponse;
+import com.matheusdev.mindforge.ai.service.model.InteractionType;
 import com.matheusdev.mindforge.core.config.ResilienceConfig;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
@@ -26,7 +29,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Semaphore;
 
 @Service("groqProvider")
 @RequiredArgsConstructor
@@ -34,6 +36,8 @@ import java.util.concurrent.Semaphore;
 public class GroqProvider implements AIProvider {
 
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final GroqTokenBudgetManager budgetManager;
 
     @Value("${groq.api.key}")
     private String apiKey;
@@ -75,55 +79,135 @@ public class GroqProvider implements AIProvider {
     @TimeLimiter(name = ResilienceConfig.GROQ_INSTANCE)
     public CompletableFuture<AIProviderResponse> executeTask(AIProviderRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + apiKey);
+            try {
+                // Validar budget antes de fazer a requisição
+                GroqModel selectedModel = GroqModel.fromString(request.model());
+                int estimatedTokens = estimateTokens(SYSTEM_INSTRUCTION, request.textPrompt(),
+                        selectedModel.getMaxTokens());
 
-            GroqModel selectedModel = GroqModel.fromString(request.model());
+                if (!budgetManager.canConsume(estimatedTokens)) {
+                    int available = budgetManager.getAvailableBudget();
+                    throw new GroqBudgetExceededException(available, estimatedTokens);
+                }
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.set("Authorization", "Bearer " + apiKey);
 
-            List<GroqRequest.Message> messages = new ArrayList<>();
-            messages.add(new GroqRequest.Message("system", SYSTEM_INSTRUCTION));
+                List<GroqRequest.Message> messages = new ArrayList<>();
+                String systemContent = StringUtils.hasText(request.systemMessage())
+                        ? request.systemMessage()
+                        : SYSTEM_INSTRUCTION;
+                messages.add(new GroqRequest.Message("system", systemContent));
 
-            Object messageContent;
-            if (request.multimodal() && request.imageData() != null) {
-                List<GroqRequest.ContentPart> contentParts = new ArrayList<>();
-                contentParts.add(GroqRequest.ContentPart.fromText(request.textPrompt()));
+                Object messageContent;
+                if (request.multimodal() && request.imageData() != null) {
+                    List<GroqRequest.ContentPart> contentParts = new ArrayList<>();
+                    contentParts.add(GroqRequest.ContentPart.fromText(request.textPrompt()));
 
-                String base64Image = Base64.getEncoder().encodeToString(request.imageData());
-                String dataUri = "data:" + request.imageMimeType() + ";base64," + base64Image;
-                contentParts.add(GroqRequest.ContentPart.fromImageUrl(dataUri));
+                    String base64Image = Base64.getEncoder().encodeToString(request.imageData());
+                    String dataUri = "data:" + request.imageMimeType() + ";base64," + base64Image;
+                    contentParts.add(GroqRequest.ContentPart.fromImageUrl(dataUri));
 
-                messageContent = contentParts;
-            } else {
-                messageContent = request.textPrompt();
+                    messageContent = contentParts;
+                } else {
+                    messageContent = request.textPrompt();
+                }
+                messages.add(new GroqRequest.Message("user", messageContent));
+
+                double temperature = (request.temperature() != null && request.temperature() > 0)
+                        ? request.temperature()
+                        : 0.7; // Default seguro (era 1.0)
+
+                GroqRequest groqRequest = new GroqRequest(
+                        selectedModel.getModelName(),
+                        messages,
+                        false,
+                        temperature, // Usando temperatura dinâmica
+                        selectedModel.getMaxTokens(),
+                        1.0,
+                        null,
+                        selectedModel.getReasoningEffort());
+
+                // --- LOG DE DEBUG: MOSTRA O QUE ESTÁ SENDO ENVIADO ---
+                String requestJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(groqRequest);
+                log.info(
+                        "\n================= [GROQ REQUEST] =================\nURL: {}\nPayload:\n{}\n==================================================",
+                        apiUrl, requestJson);
+                // -----------------------------------------------------
+
+                HttpEntity<GroqRequest> entity = new HttpEntity<>(groqRequest, headers);
+                GroqResponse response = restTemplate.postForObject(apiUrl, entity, GroqResponse.class);
+
+                // --- LOG DE DEBUG: MOSTRA O QUE FOI RECEBIDO ---
+                String responseJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
+                log.info(
+                        "\n================= [GROQ RESPONSE] =================\nPayload:\n{}\n===================================================",
+                        responseJson);
+                // ---------------------------------------------------
+
+                if (response != null && !response.choices().isEmpty()) {
+                    String responseText = response.choices().get(0).message().content();
+
+                    // Registrar uso de tokens (Real ou Estimado)
+                    int totalTokens = 0;
+                    if (response.usage() != null && response.usage().totalTokens() > 0) {
+                        totalTokens = response.usage().totalTokens();
+                    } else {
+                        // Fallback: estimativa se a API retornar 0 (comum em alguns tiers/modelos)
+                        int inputLength = (request.textPrompt() != null ? request.textPrompt().length() : 0) +
+                                (request.systemMessage() != null ? request.systemMessage().length() : 0);
+                        int outputLength = responseText != null ? responseText.length() : 0;
+                        totalTokens = (inputLength + outputLength) / 4;
+                        log.info("⚠️ Groq API reportou 0 tokens. Usando estimativa baseada em caracteres: ~{} tokens.",
+                                totalTokens);
+                    }
+
+                    budgetManager.recordUsage(totalTokens);
+
+                    return new AIProviderResponse(responseText, null, null, null, null);
+                }
+                throw new RuntimeException("A resposta do Groq foi vazia ou inválida.");
+
+            } catch (JsonProcessingException e) {
+                log.error("Erro ao serializar JSON para debug", e);
+                throw new RuntimeException("Erro interno de serialização JSON", e);
+            } catch (Exception e) {
+                log.error("Erro ao comunicar com Groq: {} - {}", e.getClass().getSimpleName(), e.getMessage(), e);
+                throw new RuntimeException("Erro na comunicação com Groq", e);
             }
-            messages.add(new GroqRequest.Message("user", messageContent));
-
-            GroqRequest groqRequest = new GroqRequest(
-                    selectedModel.getModelName(),
-                    messages,
-                    false,
-                    1.0,
-                    selectedModel.getMaxTokens(),
-                    1.0,
-                    null,
-                    selectedModel.getReasoningEffort()
-            );
-
-            HttpEntity<GroqRequest> entity = new HttpEntity<>(groqRequest, headers);
-            GroqResponse response = restTemplate.postForObject(apiUrl, entity, GroqResponse.class);
-
-            if (response != null && !response.choices().isEmpty()) {
-                String responseText = response.choices().get(0).message().content();
-                return new AIProviderResponse(responseText, null);
-            }
-            throw new RuntimeException("A resposta do Groq foi vazia ou inválida.");
         });
     }
 
     public CompletableFuture<AIProviderResponse> fallback(AIProviderRequest request, Throwable t) {
         log.error("!!! ALERTA !!! Serviço de IA (Groq) indisponível ou falhou. Causa: {}", t.getMessage());
-        String errorMessage = "Desculpe, não foi possível processar sua solicitação no momento devido a uma instabilidade no serviço de IA (Groq). Erro: " + t.getMessage();
-        return CompletableFuture.completedFuture(new AIProviderResponse(errorMessage, errorMessage));
+        String errorMessage = "Desculpe, não foi possível processar sua solicitação no momento devido a uma instabilidade no serviço de IA (Groq). Erro: "
+                + t.getMessage();
+        return CompletableFuture.completedFuture(
+                new AIProviderResponse(errorMessage, null, errorMessage, null, InteractionType.SYSTEM));
+    }
+
+    /**
+     * Estima a quantidade de tokens que uma requisição consumirá.
+     * Usa aproximação conservadora: ~4 caracteres = 1 token.
+     *
+     * @param systemMessage Mensagem de sistema
+     * @param userMessage   Mensagem do usuário
+     * @param maxTokens     Máximo de tokens de resposta
+     * @return Estimativa total de tokens (prompt + resposta + margem)
+     */
+    private int estimateTokens(String systemMessage, String userMessage, int maxTokens) {
+        int systemChars = systemMessage != null ? systemMessage.length() : 0;
+        int userChars = userMessage != null ? userMessage.length() : 0;
+
+        // Estimativa conservadora: 4 chars ≈ 1 token
+        int promptTokens = (systemChars + userChars) / 4;
+
+        // Total = prompt + resposta máxima + margem de segurança (10%)
+        int estimated = promptTokens + maxTokens + (int) (maxTokens * 0.1);
+
+        log.debug("📊 Estimativa de tokens: prompt={}, maxResponse={}, total={}",
+                promptTokens, maxTokens, estimated);
+
+        return estimated;
     }
 }

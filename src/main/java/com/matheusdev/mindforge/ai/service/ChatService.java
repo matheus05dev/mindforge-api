@@ -12,8 +12,10 @@ import com.matheusdev.mindforge.study.subject.repository.SubjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +25,30 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final SubjectRepository subjectRepository;
     private final ProjectRepository projectRepository;
+
+    @Transactional(readOnly = true)
+    public Optional<ChatSession> getSession(Long chatId) {
+        return chatSessionRepository.findById(chatId);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ChatSession> getAllSessions() {
+        return chatSessionRepository.findAll(org.springframework.data.domain.Sort
+                .by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+    }
+
+    @Transactional
+    public ChatSession createEmergencySession() {
+        ChatSession session = new ChatSession();
+        session.setTitle("Sessão de Emergência (ID Inválido)");
+        session.setCreatedAt(LocalDateTime.now());
+        return chatSessionRepository.save(session);
+    }
+
+    @Transactional
+    public ChatSession updateSession(ChatSession session) {
+        return chatSessionRepository.save(session);
+    }
 
     @Transactional
     public ChatSession getOrCreateChatSession(Subject subject, String mode) {
@@ -53,7 +79,8 @@ public class ChatService {
         ChatMessage message = new ChatMessage();
         message.setSession(session);
         message.setRole(role);
-        message.setContent(content);
+        // Fallback de segurança para garantir que o conteúdo nunca seja nulo
+        message.setContent(StringUtils.hasText(content) ? content : "(Conteúdo vazio)");
         return chatMessageRepository.save(message);
     }
 
@@ -67,6 +94,7 @@ public class ChatService {
         }
         session.setTitle(title);
         session.setCreatedAt(LocalDateTime.now());
+        session.setDocumentId(fileName); // Salva o nome do arquivo como documentId
         return chatSessionRepository.save(session);
     }
 }

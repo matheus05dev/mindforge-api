@@ -20,6 +20,9 @@ public class ChatSession {
     private String title;
     private LocalDateTime createdAt;
 
+    @Column(name = "document_id")
+    private String documentId;
+
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ChatMessage> messages = new ArrayList<>();
 

@@ -36,7 +36,7 @@ public class KnowledgeItemAIService {
                 .orElseThrow(() -> new ResourceNotFoundException("Item de conhecimento não encontrado."));
 
         PromptPair prompts = promptBuilderService.buildContentModificationPrompt(item.getContent(), instruction);
-        ChatRequest chatRequest = new ChatRequest(prompts.userPrompt(), provider, null, prompts.systemPrompt());
+        ChatRequest chatRequest = new ChatRequest(null, null, prompts.userPrompt(), provider, null, prompts.systemPrompt());
 
         try {
             AIProviderResponse response = aiOrchestrationService.handleChatInteraction(chatRequest).get();

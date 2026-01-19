@@ -28,7 +28,7 @@ public class ProductService {
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
         try {
-            ChatRequest chatRequest = new ChatRequest(prompts.userPrompt(), request.getProvider(), null, prompts.systemPrompt());
+            ChatRequest chatRequest = new ChatRequest(null, null, prompts.userPrompt(), request.getProvider(), null, prompts.systemPrompt());
             AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(chatRequest).get();
 
             if (aiResponse.getError() != null) {

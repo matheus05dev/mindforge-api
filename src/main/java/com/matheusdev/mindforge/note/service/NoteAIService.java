@@ -34,7 +34,7 @@ public class NoteAIService {
         PromptPair prompts = promptBuilderService.buildContentModificationPrompt(note.getContent(), requestDTO.getInstruction());
 
         try {
-            ChatRequest chatRequest = new ChatRequest(prompts.userPrompt(), requestDTO.getProvider(), null, prompts.systemPrompt());
+            ChatRequest chatRequest = new ChatRequest(null, null, prompts.userPrompt(), requestDTO.getProvider(), null, prompts.systemPrompt());
             AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(chatRequest).get();
 
             if (aiResponse.getError() != null) {

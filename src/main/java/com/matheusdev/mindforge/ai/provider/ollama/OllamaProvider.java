@@ -66,7 +66,9 @@ public class OllamaProvider implements AIProvider {
 
                 // --- LOG DE DEBUG: MOSTRA O QUE ESTÁ SENDO ENVIADO ---
                 String requestJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(ollamaRequest);
-                log.info("\n================= [OLLAMA REQUEST] =================\nURL: {}\nPayload:\n{}\n====================================================", apiUrl, requestJson);
+                log.info(
+                        "\n================= [OLLAMA REQUEST] =================\nURL: {}\nPayload:\n{}\n====================================================",
+                        apiUrl, requestJson);
                 // -----------------------------------------------------
 
                 HttpHeaders headers = new HttpHeaders();
@@ -79,15 +81,17 @@ public class OllamaProvider implements AIProvider {
 
                 // --- LOG DE DEBUG: MOSTRA O QUE FOI RECEBIDO ---
                 String responseJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-                log.info("\n================= [OLLAMA RESPONSE] =================\nPayload:\n{}\n=====================================================", responseJson);
+                log.info(
+                        "\n================= [OLLAMA RESPONSE] =================\nPayload:\n{}\n=====================================================",
+                        responseJson);
                 // ---------------------------------------------------
 
                 if (response != null && response.message() != null) {
-                    log.info("✅ [OLLAMA] Resposta recebida com sucesso! Tamanho da resposta: {} caracteres", 
+                    log.info("✅ [OLLAMA] Resposta recebida com sucesso! Tamanho da resposta: {} caracteres",
                             response.message().content() != null ? response.message().content().length() : 0);
-                    return new AIProviderResponse(response.message().content(), null);
+                    return new AIProviderResponse(response.message().content(), null, null, null, null);
                 }
-                
+
                 log.error("Resposta do Ollama veio nula ou sem mensagem.");
                 throw new RuntimeException("A resposta do Ollama foi vazia ou inválida.");
 
@@ -95,10 +99,14 @@ public class OllamaProvider implements AIProvider {
                 log.error("Erro ao serializar JSON para debug", e);
                 throw new RuntimeException("Erro interno de serialização JSON", e);
             } catch (org.springframework.web.client.ResourceAccessException e) {
-                log.error("Erro de conexão com Ollama em {}: {}. Verifique se o Ollama está rodando.", apiUrl, e.getMessage());
-                throw new RuntimeException("Não foi possível conectar ao Ollama. Verifique se o serviço está rodando em " + apiUrl, e);
-            } catch (org.springframework.web.client.HttpClientErrorException | org.springframework.web.client.HttpServerErrorException e) {
-                log.error("Erro HTTP ao comunicar com Ollama: Status {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+                log.error("Erro de conexão com Ollama em {}: {}. Verifique se o Ollama está rodando.", apiUrl,
+                        e.getMessage());
+                throw new RuntimeException(
+                        "Não foi possível conectar ao Ollama. Verifique se o serviço está rodando em " + apiUrl, e);
+            } catch (org.springframework.web.client.HttpClientErrorException
+                    | org.springframework.web.client.HttpServerErrorException e) {
+                log.error("Erro HTTP ao comunicar com Ollama: Status {} - {}", e.getStatusCode(),
+                        e.getResponseBodyAsString());
                 throw new RuntimeException("Erro HTTP ao comunicar com Ollama: " + e.getStatusCode(), e);
             } catch (Exception e) {
                 log.error("Erro ao comunicar com Ollama: {} - {}", e.getClass().getSimpleName(), e.getMessage(), e);
@@ -106,6 +114,9 @@ public class OllamaProvider implements AIProvider {
             }
         });
     }
+
+    @Value("${ollama.model.vision:qwen3-vl:4b}")
+    private String visionModel;
 
     /**
      * Constrói o objeto de requisição (DTO) para o formato esperado pelo Ollama.
@@ -129,21 +140,44 @@ public class OllamaProvider implements AIProvider {
         // Adiciona a mensagem do usuário
         messages.add(new OllamaRequest.Message("user", request.textPrompt(), images));
 
+        // Seleciona o modelo adequado (Texto puro vs Visão)
+        String selectedModel = (request.multimodal() && images != null && !images.isEmpty())
+                ? visionModel
+                : model;
+
+        if (!selectedModel.equals(model)) {
+            log.info("👁️ Modo Multimodal detectado: Usando modelo de visão '{}'", selectedModel);
+        }
+
         // Retorna o objeto construído
         return OllamaRequest.builder()
-                .model(model)
+                .model(selectedModel)
                 .messages(messages)
                 .stream(false) // Desativa streaming para simplificar o tratamento
+                .options(new OllamaRequest.Options(request.temperature() != null ? request.temperature() : 0.7))
                 .build();
     }
 
     /**
      * Método de fallback caso o Ollama falhe.
-     * Redireciona a chamada para o GroqProvider.
+     * Redireciona a chamada para o GroqProvider se houver budget disponível.
      */
     public CompletableFuture<AIProviderResponse> fallback(AIProviderRequest request, Throwable t) {
         log.warn("!!! ALERTA !!! Serviço de IA (Ollama) indisponível ou falhou. Causa: {}", t.getMessage());
-        log.info("Redirecionando requisição para o provedor de backup: GroqProvider.");
-        return groqProvider.executeTask(request);
+
+        // Log genérico para indicar que o fallback está ocorrendo
+        if (request.systemMessage() != null && !request.systemMessage().isEmpty()) {
+            log.info("Request com contexto (systemMessage presente) sendo redirecionado para o backup.");
+        }
+
+        try {
+            log.info("Redirecionando requisição para o provedor de backup: GroqProvider.");
+            return groqProvider.executeTask(request);
+        } catch (com.matheusdev.mindforge.ai.provider.groq.GroqBudgetExceededException budgetEx) {
+            log.warn("⚠️ Groq backup indisponível: {}", budgetEx.getMessage());
+            String errorMessage = "Ollama timeout e Groq sem budget disponível. Aguarde 1 minuto ou tente novamente.";
+            return CompletableFuture.completedFuture(
+                    new AIProviderResponse(errorMessage, null, errorMessage, null, null));
+        }
     }
 }

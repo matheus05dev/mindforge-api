@@ -11,39 +11,40 @@ public record AIProviderRequest(
         byte[] imageData,
         String imageMimeType,
         byte[] documentData,
-        String documentMimeType
-) {
+        String documentMimeType,
+        Double temperature) {
     // Construtor para requisições de texto simples
     public AIProviderRequest(String textPrompt) {
-        this(textPrompt, null, null, null, false, null, null, null, null);
+        this(textPrompt, null, null, null, false, null, null, null, null, null);
     }
 
     // Construtor para requisições de texto com mais contexto
     public AIProviderRequest(String textPrompt, String systemMessage, String model, String preferredProvider) {
-        this(textPrompt, systemMessage, model, preferredProvider, false, null, null, null, null);
+        this(textPrompt, systemMessage, model, preferredProvider, false, null, null, null, null, null);
     }
 
     // Construtor para requisições de texto com mais contexto (sem provedor)
     public AIProviderRequest(String textPrompt, String systemMessage, String model) {
-        this(textPrompt, systemMessage, model, null, false, null, null, null, null);
+        this(textPrompt, systemMessage, model, null, false, null, null, null, null, null);
     }
 
     // Construtor para requisições multimodais (imagem + texto)
     public AIProviderRequest(String textPrompt, byte[] imageData, String imageMimeType) {
-        this(textPrompt, null, null, null, true, imageData, imageMimeType, null, null);
+        this(textPrompt, null, null, null, true, imageData, imageMimeType, null, null, null);
     }
 
     // Construtor para requisições com documento
     public AIProviderRequest(String textPrompt, byte[] documentData, String documentMimeType, boolean isDocument) {
-        this(textPrompt, null, null, null, isDocument, null, null, documentData, documentMimeType);
+        this(textPrompt, null, null, null, isDocument, null, null, documentData, documentMimeType, null);
     }
 
     /**
      * Converte este AIProviderRequest em um ChatRequest.
+     * 
      * @param provider O nome do provedor a ser usado.
      * @return Um novo ChatRequest.
      */
     public ChatRequest toChatRequest(String provider) {
-        return new ChatRequest(this.textPrompt, provider, this.model, this.systemMessage);
+        return new ChatRequest(null, null, this.textPrompt, provider, this.model, this.systemMessage);
     }
 }

@@ -58,7 +58,8 @@ public class VectorStoreService {
                     technicalTerms.put(key.substring(10), props.getProperty(key));
                 }
             }
-            log.info("Loaded {} common, {} academic, and {} technical terms.", commonTerms.size(), academicTerms.size(), technicalTerms.size());
+            log.info("Loaded {} common, {} academic, and {} technical terms.", commonTerms.size(), academicTerms.size(),
+                    technicalTerms.size());
         } catch (IOException ex) {
             log.error("Error loading term expansions", ex);
         }
@@ -88,8 +89,27 @@ public class VectorStoreService {
         // 3. CHUNKING ADAPTATIVO baseado no perfil
         DocumentAnalyzer.ChunkingConfig config = documentAnalyzer.recommendChunkingConfig(profile);
         log.info("📐 Configuração de chunking adaptativo: {}", config);
-        
-        DocumentSplitter splitter = DocumentSplitters.recursive(config.chunkSize, config.overlap);
+
+        DocumentSplitter splitter;
+        // Se o documento for complexo, técnico ou acadêmico, usamos o Semantic Splitter
+        // para preservar tabelas e coerência
+        if (profile.complexity == DocumentAnalyzer.ComplexityLevel.HIGH ||
+                profile.type == DocumentAnalyzer.DocumentType.ACADEMIC ||
+                profile.type == DocumentAnalyzer.DocumentType.TECHNICAL) {
+
+            log.info("🧠 Usando Semantic Chunking para preservação de contexto (Tabelas/Código) - Threshold: 0.82");
+            splitter = new com.matheusdev.mindforge.ai.splitter.SemanticDocumentSplitter(
+                    embeddingModel,
+                    0.82, // Similaridade mínima para manter junto (Mais rigoroso: 0.82)
+                    config.chunkSize,
+                    100, // Tamanho mínimo
+                    config.overlap // Overlap configurado
+            );
+        } else {
+            // Fallback para documentos simples ou estruturados manualmente
+            splitter = DocumentSplitters.recursive(config.chunkSize, config.overlap);
+        }
+
         List<TextSegment> rawSegments = splitter.split(enrichedDoc);
 
         // 4. ENRIQUECER chunks com metadados estruturais
@@ -102,7 +122,7 @@ public class VectorStoreService {
         // 6. CRIAR vector store
         EmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
         embeddingStore.addAll(embeddings, enrichedSegments);
-        
+
         vectorStores.put(documentId, embeddingStore);
         log.info("✅ Vector store criado com sucesso para '{}'.", documentId);
 
@@ -142,69 +162,68 @@ public class VectorStoreService {
      * Enriquece cada chunk com metadados estruturais inteligentes.
      */
     private List<TextSegment> enrichSegments(
-            List<TextSegment> rawSegments, 
-            String documentId, 
+            List<TextSegment> rawSegments,
+            String documentId,
             DocumentAnalyzer.DocumentProfile profile) {
-        
+
         List<TextSegment> enrichedSegments = new ArrayList<>();
-        
+
         for (int i = 0; i < rawSegments.size(); i++) {
             TextSegment segment = rawSegments.get(i);
             String chunkText = segment.text();
-            
+
             Map<String, String> metadata = new HashMap<>();
-            
+
             // Metadados básicos
             metadata.put("chunk_index", String.valueOf(i));
             metadata.put("document_id", documentId);
             metadata.put("document_type", profile.type.toString());
-            
+
             // Detectar tipo de conteúdo
             String contentType = detectContentType(chunkText, profile);
             metadata.put("content_type", contentType);
-            
+
             // Extrair seção (se houver)
             String section = extractSection(chunkText);
             if (section != null) {
                 metadata.put("section", section);
                 metadata.put("has_section", "true");
             }
-            
+
             // Detectar tabelas
             if (containsTable(chunkText)) {
                 metadata.put("has_table", "true");
                 metadata.put("table_type", detectTableType(chunkText));
             }
-            
+
             // Detectar código
             if (containsCode(chunkText)) {
                 metadata.put("has_code", "true");
             }
-            
+
             // Detectar listas/enumerações
             if (containsList(chunkText)) {
                 metadata.put("has_list", "true");
             }
-            
+
             // Detectar definições/conceitos importantes
             if (containsDefinition(chunkText)) {
                 metadata.put("has_definition", "true");
             }
-            
+
             // Para chunks com números/percentuais (importantes!)
             if (containsNumericData(chunkText)) {
                 metadata.put("has_numeric_data", "true");
                 metadata.put("numeric_values", extractNumericValues(chunkText));
             }
-            
+
             // Criar novo TextSegment enriquecido
             TextSegment enrichedSegment = TextSegment.from(
-                chunkText,
-                new dev.langchain4j.data.document.Metadata(metadata)
-            );
+                    chunkText,
+                    new dev.langchain4j.data.document.Metadata(metadata));
             enrichedSegments.add(enrichedSegment);
         }
-        
+
         return enrichedSegments;
     }
 
@@ -212,13 +231,20 @@ public class VectorStoreService {
 
     private String detectContentType(String text, DocumentAnalyzer.DocumentProfile profile) {
         // Prioridade de detecção
-        if (text.matches("(?s).*\\d+\\.\\d+\\.?\\d?.*[A-Z].*")) return "section_header";
-        if (containsTable(text)) return "table";
-        if (containsCode(text)) return "code";
-        if (containsList(text)) return "list";
-        if (containsDefinition(text)) return "definition";
-        if (text.startsWith("Resumo") || text.startsWith("Abstract")) return "summary";
-        if (text.contains("Exemplo") || text.contains("exemplo")) return "example";
+        if (text.matches("(?s).*\\d+\\.\\d+\\.?\\d?.*[A-Z].*"))
+            return "section_header";
+        if (containsTable(text))
+            return "table";
+        if (containsCode(text))
+            return "code";
+        if (containsList(text))
+            return "list";
+        if (containsDefinition(text))
+            return "definition";
+        if (text.startsWith("Resumo") || text.startsWith("Abstract"))
+            return "summary";
+        if (text.contains("Exemplo") || text.contains("exemplo"))
+            return "example";
         return "prose";
     }
 
@@ -232,15 +258,18 @@ public class VectorStoreService {
     }
 
     private boolean containsTable(String text) {
-        return text.matches("(?s).*\\|.*\\|.*") || 
-               (text.contains("%") && text.matches("(?s).*\\d{2,3}%.*\\d{2,3}%.*")) ||
-               (text.contains("Debt Score") || text.contains("Métrica") || text.contains("Classificação"));
+        return text.matches("(?s).*\\|.*\\|.*") ||
+                (text.contains("%") && text.matches("(?s).*\\d{2,3}%.*\\d{2,3}%.*")) ||
+                (text.contains("Debt Score") || text.contains("Métrica") || text.contains("Classificação"));
     }
 
     private String detectTableType(String text) {
-        if (text.contains("Debt Score") || text.contains("Score")) return "score_table";
-        if (text.contains("%") && text.contains("sprint")) return "allocation_table";
-        if (text.contains("Métrica")) return "metrics_table";
+        if (text.contains("Debt Score") || text.contains("Score"))
+            return "score_table";
+        if (text.contains("%") && text.contains("sprint"))
+            return "allocation_table";
+        if (text.contains("Métrica"))
+            return "metrics_table";
         return "generic_table";
     }
 
@@ -249,9 +278,9 @@ public class VectorStoreService {
     }
 
     private boolean containsList(String text) {
-        return text.matches("(?s).*[•●■].*") || 
-               text.matches("(?s).*\\n\\s*[-*]\\s+.*") ||
-               text.matches("(?s).*\\n\\s*\\d+\\.\\s+.*");
+        return text.matches("(?s).*[•●■].*") ||
+                text.matches("(?s).*\\n\\s*[-*]\\s+.*") ||
+                text.matches("(?s).*\\n\\s*\\d+\\.\\s+.*");
     }
 
     private boolean containsDefinition(String text) {
@@ -259,9 +288,9 @@ public class VectorStoreService {
     }
 
     private boolean containsNumericData(String text) {
-        return text.matches("(?s).*\\d+%.*") || 
-               text.matches("(?s).*\\d+\\.\\d+.*") ||
-               text.matches("(?s).*\\$\\d+.*");
+        return text.matches("(?s).*\\d+%.*") ||
+                text.matches("(?s).*\\d+\\.\\d+.*") ||
+                text.matches("(?s).*\\$\\d+.*");
     }
 
     private String extractNumericValues(String text) {
@@ -275,11 +304,25 @@ public class VectorStoreService {
     }
 
     /**
+     * Gera embedding com cache para evitar chamadas redundantes ao modelo
+     * (Ollama/Python).
+     * O cache é configurado em CacheConfig.java com nome "embeddings".
+     */
+    @org.springframework.cache.annotation.Cacheable(value = "embeddings", key = "#text.hashCode()") // HashCode para
+                                                                                                    // chave curta
+    public dev.langchain4j.data.embedding.Embedding generateEmbeddingWithCache(String text) {
+        log.debug("🧮 Gerando embedding (ou buscando do cache) para: '{}'",
+                text.substring(0, Math.min(20, text.length())));
+        return embeddingModel.embed(text).content();
+    }
+
+    /**
      * Busca ADAPTATIVA com fallback automático.
      */
-    public List<TextSegment> findRelevantSegments(String documentId, String query, int maxResults, double minScore) {
+    public List<EmbeddingMatch<TextSegment>> findRelevantSegments(String documentId, String query, int maxResults,
+            double minScore) {
         EmbeddingStore<TextSegment> embeddingStore = vectorStores.get(documentId);
-        
+
         if (embeddingStore == null) {
             log.warn("❌ Vector store não encontrado para '{}'. Retornando lista vazia.", documentId);
             return List.of();
@@ -288,18 +331,20 @@ public class VectorStoreService {
         // Ajustar minScore baseado no perfil do documento
         DocumentAnalyzer.DocumentProfile profile = documentProfiles.get(documentId);
         double adaptiveMinScore = minScore;
-        
+
         if (profile != null && profile.complexity == DocumentAnalyzer.ComplexityLevel.HIGH) {
             adaptiveMinScore = Math.max(0.6, minScore - 0.1); // Mais permissivo para docs complexos
-            log.info("🎯 MinScore adaptado para documento complexo: {} → {}", minScore, adaptiveMinScore);
+            maxResults = Math.max(maxResults, 20); // Garante pelo menos 20 chunks para docs complexos
+            log.info("🎯 MinScore adaptado: {} -> {} | Top-K Boosted: -> {}", minScore, adaptiveMinScore, maxResults);
         }
 
         log.info("🔍 Buscando {} segmentos (score >= {}) para '{}'...", maxResults, adaptiveMinScore, documentId);
 
-        Embedding queryEmbedding = embeddingModel.embed(query).content();
+        // USANDO O MÉTODO COM CACHE AQUI:
+        Embedding queryEmbedding = generateEmbeddingWithCache(query);
+
         List<EmbeddingMatch<TextSegment>> relevantMatches = embeddingStore.findRelevant(
-            queryEmbedding, maxResults, adaptiveMinScore
-        );
+                queryEmbedding, maxResults, adaptiveMinScore);
 
         // FALLBACK: Se não encontrou nada, tenta com score mais baixo
         if (relevantMatches.isEmpty() && adaptiveMinScore > 0.5) {
@@ -309,9 +354,7 @@ public class VectorStoreService {
 
         log.info("✅ Encontrados {} segmentos relevantes.", relevantMatches.size());
 
-        return relevantMatches.stream()
-                .map(EmbeddingMatch::embedded)
-                .toList();
+        return relevantMatches;
     }
 
     // Métodos de gerenciamento (mantidos iguais)
@@ -330,5 +373,9 @@ public class VectorStoreService {
         vectorStores.clear();
         documentProfiles.clear();
         log.info("🗑️ Todos os vector stores removidos (total: {}).", count);
+    }
+
+    public DocumentAnalyzer.DocumentProfile getDocumentProfile(String documentId) {
+        return documentProfiles.get(documentId);
     }
 }
