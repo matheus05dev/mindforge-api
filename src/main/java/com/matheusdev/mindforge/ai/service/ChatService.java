@@ -46,8 +46,34 @@ public class ChatService {
     }
 
     @Transactional
+    public ChatSession createNewSession() {
+        ChatSession session = new ChatSession();
+        session.setTitle("Nova Conversa");
+        session.setCreatedAt(LocalDateTime.now());
+        return chatSessionRepository.save(session);
+    }
+
+    @Transactional
     public ChatSession updateSession(ChatSession session) {
         return chatSessionRepository.save(session);
+    }
+
+    @Transactional
+    public Optional<ChatSession> updateSessionTitle(Long sessionId, String newTitle) {
+        return chatSessionRepository.findById(sessionId)
+                .map(session -> {
+                    session.setTitle(newTitle);
+                    return chatSessionRepository.save(session);
+                });
+    }
+
+    @Transactional
+    public boolean deleteSession(Long sessionId) {
+        if (chatSessionRepository.existsById(sessionId)) {
+            chatSessionRepository.deleteById(sessionId);
+            return true;
+        }
+        return false;
     }
 
     @Transactional

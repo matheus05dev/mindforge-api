@@ -185,8 +185,50 @@ public class AIOrchestrationService {
                             userMessage,
                             1L, // userId fixo
                             InteractionType.CHAT,
-                            null));
+                            null))
+                    .thenApply(response -> {
+                        // TRIGGER AUTO-RENAME BACKGROUND TASK
+                        // If title is "Nova Conversa" and it's a chat interaction, generate a title
+                        if ("Nova Conversa".equals(session.getTitle())) {
+                            triggerBackgroudTitleGeneration(session.getId(), userPrompt);
+                        }
+                        return response;
+                    });
         }
+    }
+
+    private void triggerBackgroudTitleGeneration(Long sessionId, String firstMessage) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info(">>> [AUTO-RENAME] Gerando título para sessão {}", sessionId);
+                String prompt = String.format(
+                        "Gere um título muito curto (3 a 5 palavras max), resumido e sem aspas para uma conversa que começa com: \"%s\". Responda APENAS o título, nada mais.",
+                        firstMessage.length() > 200 ? firstMessage.substring(0, 200) + "..." : firstMessage);
+
+                // Use default provider (usually Ollama/Llama) for this quick task
+                AIProvider provider = getProvider(DEFAULT_PROVIDER);
+                AIProviderRequest request = new AIProviderRequest(prompt,
+                        "Você é um assistente especializado em resumir tópicos.", null, DEFAULT_PROVIDER);
+
+                // Fire and forget (or rather, log failure)
+                promptCacheService.executeWithCache(provider, request).thenAccept(response -> {
+                    String newTitle = response.getContent();
+                    if (newTitle != null) {
+                        newTitle = newTitle.replace("\"", "").replace("'", "").trim();
+                        if (!newTitle.isBlank()) {
+                            chatService.updateSessionTitle(sessionId, newTitle);
+                            log.info(">>> [AUTO-RENAME] Sessão {} renomeada para: {}", sessionId, newTitle);
+                        }
+                    }
+                }).exceptionally(ex -> {
+                    log.warn("Falha ao gerar título automático: {}", ex.getMessage());
+                    return null;
+                });
+
+            } catch (Exception e) {
+                log.warn("Erro ao iniciar task de auto-rename: {}", e.getMessage());
+            }
+        });
     }
 
     public CompletableFuture<AIProviderResponse> handleFileAnalysis(String userPrompt, String providerName,
@@ -853,10 +895,71 @@ public class AIOrchestrationService {
                     }
                     case ASK_AGENT -> {
                         if (request.isUseContext()) {
-                            log.info("🕵️ Modo Agente com Contexto (RAG)...");
+                            log.info("🕵️ Modo Agente com Contexto (RAG) - Buscando em outras notas...");
+
+                            // Perform RAG search across ALL knowledge items
+                            String searchQuery = request.getInstruction();
+                            StringBuilder ragEvidence = new StringBuilder();
+
+                            try {
+                                // Get all knowledge items to search across them
+                                List<com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem> allItems = knowledgeItemRepository
+                                        .findAll();
+
+                                List<Evidence> allEvidences = new ArrayList<>();
+
+                                // Search each indexed knowledge item
+                                for (var item : allItems) {
+                                    // Skip the current note
+                                    if (request.getKnowledgeId() != null
+                                            && item.getId().equals(request.getKnowledgeId())) {
+                                        continue;
+                                    }
+
+                                    String docId = "knowledge_" + item.getId();
+                                    try {
+                                        List<Evidence> evidences = ragService.queryIndexedDocument(docId, searchQuery,
+                                                3);
+                                        for (Evidence ev : evidences) {
+                                            if (ev.score() >= 0.75) { // Only high-relevance results
+                                                allEvidences.add(ev);
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        log.debug("Documento {} não indexado ou erro: {}", docId, e.getMessage());
+                                    }
+                                }
+
+                                // Sort by score and take top 5
+                                allEvidences.sort((a, b) -> Double.compare(b.score(), a.score()));
+                                List<Evidence> topEvidences = allEvidences.stream().limit(5).toList();
+
+                                if (!topEvidences.isEmpty()) {
+                                    ragEvidence.append("\n\n### EVIDÊNCIAS DE OUTRAS NOTAS:\n");
+                                    for (Evidence ev : topEvidences) {
+                                        ragEvidence.append(String.format("\n**Fonte: %s** (Relevância: %.2f)\n%s\n",
+                                                ev.documentId().replace("knowledge_", "Nota #"),
+                                                ev.score(),
+                                                ev.excerpt()));
+                                    }
+                                    log.info("✅ RAG encontrou {} evidências relevantes", topEvidences.size());
+                                } else {
+                                    log.warn("⚠️ RAG não encontrou evidências relevantes para: {}", searchQuery);
+                                }
+                            } catch (Exception e) {
+                                log.error("❌ Erro ao buscar evidências RAG", e);
+                            }
+
                             prompt = String.format(
-                                    "Aja como um agente especialista.\nContexto da nota atual:\n%s\n\nPergunta/Comando do usuário:\n%s",
-                                    request.getContext(), request.getInstruction());
+                                    "Você é um agente especialista que tem acesso a uma base de conhecimento.\n\n" +
+                                            "**CONTEXTO DA NOTA ATUAL:**\n%s\n\n" +
+                                            "%s\n\n" +
+                                            "**PERGUNTA/COMANDO DO USUÁRIO:**\n%s\n\n" +
+                                            "Responda de forma precisa, citando as fontes quando usar informações das evidências.",
+                                    request.getContext(),
+                                    ragEvidence.length() == 0 ? "(Nenhuma evidência adicional encontrada)"
+                                            : ragEvidence.toString(),
+                                    request.getInstruction());
                         } else {
                             prompt = String.format("Pergunta: %s\n\nContexto (Nota atual): %s",
                                     request.getInstruction(), request.getContext());
