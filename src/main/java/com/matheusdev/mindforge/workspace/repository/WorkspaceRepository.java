@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface WorkspaceRepository extends JpaRepository<Workspace, Long> {
+    java.util.Optional<Workspace> findByNameIgnoreCase(String name);
 }

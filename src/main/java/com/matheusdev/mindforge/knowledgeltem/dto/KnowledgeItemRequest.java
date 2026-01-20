@@ -13,4 +13,7 @@ public class KnowledgeItemRequest {
     private String content;
     @Schema(description = "The tags of the knowledge item", example = "[\"java\", \"best-practices\"]")
     private List<String> tags;
+
+    @Schema(description = "The workspace ID or name", example = "geral")
+    private String workspaceId;
 }
