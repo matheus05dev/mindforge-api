@@ -31,7 +31,7 @@ public class ChatRestController {
 
     @PostMapping
     @Operation(summary = "Envia um prompt para o provedor de IA selecionado", description = "Permite enviar um prompt de texto direto para um provedor de IA (ex: Ollama, Groq) e receber uma resposta. Você pode especificar o provedor, o modelo e uma mensagem de sistema.")
-    public CompletableFuture<ResponseEntity<?>> chat(@RequestBody ChatRequest chatRequest) {
+    public ResponseEntity<?> chat(@RequestBody ChatRequest chatRequest) throws Exception {
         return aiOrchestrationService.handleChatInteraction(chatRequest)
                 .thenApply(response -> {
                     String content = response.getContent();
@@ -48,7 +48,7 @@ public class ChatRestController {
                             return ResponseEntity.ok(new ChatResponseDTO(content, "TEXT"));
                         }
                     }
-                });
+                }).get(); // WAIT for completion before returning
     }
 
     @PostMapping("/session")

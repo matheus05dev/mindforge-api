@@ -50,8 +50,9 @@ public class AIOrchestrationService {
     private final DocumentAnalyzer documentAnalyzer;
     private final ObjectMapper objectMapper;
     private final PromptCacheService promptCacheService;
-
     private final VectorStoreService vectorStoreService;
+    private final com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeItemRepository knowledgeItemRepository;
+    private final com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository chatSessionRepository;
 
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
     private static final String FALLBACK_PROVIDER = "groqProvider";
@@ -785,5 +786,110 @@ public class AIOrchestrationService {
 
     private String getFailureJson() {
         return "{\"answer\":{\"markdown\":\"❌ Erro interno ao processar a resposta da IA.\",\"plainText\":\"❌ Erro interno ao processar a resposta da IA.\"},\"references\":[]}";
+    }
+
+    public CompletableFuture<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse> processKnowledgeAssist(
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest request) {
+        log.info(">>> [ORCHESTRATOR] Processando Knowledge Assist: {}", request.getCommand());
+
+        String providerName = DEFAULT_PROVIDER;
+        AIProvider provider = getProvider(providerName);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String prompt;
+                String systemPrompt = "Você é um assistente de escrita inteligente integrado a um editor de texto (tipo Notion AI). "
+                        +
+                        "Sua tarefa é ajudar o usuário a escrever, editar e melhorar notas.";
+
+                // PERSISTENCE LOGIC START
+                ChatSession session = null;
+                boolean isAgentMode = request
+                        .getCommand() == com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest.Command.ASK_AGENT;
+
+                if (isAgentMode && request.getKnowledgeId() != null) {
+                    // Try to find existing session for this Knowledge Item
+                    Optional<ChatSession> existingSession = chatSessionRepository
+                            .findByKnowledgeItemId(request.getKnowledgeId());
+
+                    if (existingSession.isPresent()) {
+                        session = existingSession.get();
+                        log.info("Sessão existente encontrada: {}", session.getId());
+                    } else {
+                        // Create new session
+                        com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem item = knowledgeItemRepository
+                                .findById(request.getKnowledgeId())
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                        "Knowledge Item not found: " + request.getKnowledgeId()));
+
+                        session = new ChatSession();
+                        session.setTitle("Chat: " + item.getTitle());
+                        session.setCreatedAt(java.time.LocalDateTime.now());
+                        session.setKnowledgeItem(item);
+                        session = chatSessionRepository.save(session);
+                        log.info("Nova sessão de chat criada para KnowledgeItem {}: {}", item.getId(), session.getId());
+                    }
+                }
+                // PERSISTENCE LOGIC END
+
+                switch (request.getCommand()) {
+                    case CONTINUE -> {
+                        prompt = "Continue o seguinte texto de forma natural e coesa:\n\n" + request.getContext();
+                    }
+                    case SUMMARIZE -> {
+                        prompt = "Resuma o seguinte texto em tópicos ou parágrafos concisos:\n\n"
+                                + request.getContext();
+                    }
+                    case FIX_GRAMMAR -> {
+                        prompt = "Corrija a gramática e ortografia do seguinte texto, mantendo o tom original:\n\n"
+                                + request.getContext();
+                    }
+                    case IMPROVE -> {
+                        prompt = "Melhore a clareza, fluxo e vocabulário do seguinte texto:\n\n" + request.getContext();
+                    }
+                    case CUSTOM -> {
+                        prompt = String.format("Instrução: %s\n\nTexto: %s", request.getInstruction(),
+                                request.getContext());
+                    }
+                    case ASK_AGENT -> {
+                        if (request.isUseContext()) {
+                            log.info("🕵️ Modo Agente com Contexto (RAG)...");
+                            prompt = String.format(
+                                    "Aja como um agente especialista.\nContexto da nota atual:\n%s\n\nPergunta/Comando do usuário:\n%s",
+                                    request.getContext(), request.getInstruction());
+                        } else {
+                            prompt = String.format("Pergunta: %s\n\nContexto (Nota atual): %s",
+                                    request.getInstruction(), request.getContext());
+                        }
+                    }
+                    default -> throw new IllegalArgumentException("Comando desconhecido");
+                }
+
+                if (session != null) {
+                    // Save User Message
+                    chatService.saveMessage(session, "user", request.getInstruction() != null ? request.getInstruction()
+                            : "Comando: " + request.getCommand());
+                }
+
+                AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemPrompt, null, providerName);
+                AIProviderResponse response = executeAndLogTask(aiRequest, provider,
+                        "Knowledge Assist - " + request.getCommand()).get();
+
+                String resultText = response.getContent();
+
+                if (session != null) {
+                    // Save Assistant Message
+                    chatService.saveMessage(session, "assistant", resultText);
+                }
+
+                return new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse(resultText, true,
+                        "Sucesso");
+
+            } catch (Exception e) {
+                log.error("Erro no Knowledge Assist", e);
+                return new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse("", false,
+                        "Erro: " + e.getMessage());
+            }
+        });
     }
 }
