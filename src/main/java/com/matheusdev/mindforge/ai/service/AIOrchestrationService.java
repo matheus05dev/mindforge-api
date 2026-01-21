@@ -39,6 +39,20 @@ import java.util.stream.IntStream;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+/**
+ * Serviço central de orquestração de Inteligência Artificial.
+ * <p>
+ * Responsável por gerenciar o fluxo completo de requisições de IA, incluindo:
+ * <ul>
+ * <li>Roteamento inteligente entre provedores (Local vs Cloud).</li>
+ * <li>Gerenciamento de contexto e sessões de chat.</li>
+ * <li>Execução de pipelines RAG (Retrieval-Augmented Generation).</li>
+ * <li>Análise de documentos (One-Shot, Map-Reduce).</li>
+ * <li>Integração com serviços de memória e aprendizado do usuário.</li>
+ * </ul>
+ * atua como o "cérebro" que coordena os diversos componentes do sistema
+ * MindForge.
+ */
 public class AIOrchestrationService {
 
     private final Map<String, AIProvider> aiProviders;
@@ -61,11 +75,20 @@ public class AIOrchestrationService {
     private static final long MAX_VALID_SESSION_ID = 1_000_000_000L;
     private final Semaphore semaphore = new Semaphore(1);
 
+    /**
+     * Executa uma análise interna sem interação direta do usuário (headless).
+     * Útil para processos de background como geração de títulos, resumos
+     * automáticos, etc.
+     *
+     * @param prompt        Prompt principal com a instrução.
+     * @param systemMessage Mensagem de sistema para definir o comportamento da IA.
+     * @return CompletableFuture com a resposta do provedor.
+     */
     public CompletableFuture<AIProviderResponse> executeInternalAnalysis(String prompt, String systemMessage) {
         log.info(">>> [ORCHESTRATOR] Executando análise interna (headless)...");
 
-        // FIX: Revertido para Default (Ollama) para economizar tokens do Groq.
-        // O usuário prefere processamento local para tarefas de background.
+        // CORREÇÃO: Revertido para Default (Ollama) para economizar tokens do Groq.
+        // O usuário prefere processamento local para tarefas de background (headless).
         String providerName = DEFAULT_PROVIDER;
 
         AIProvider selectedProvider = getProvider(providerName);
@@ -90,6 +113,22 @@ public class AIOrchestrationService {
                 });
     }
 
+    /**
+     * Gerencia a interação completa de chat com o usuário.
+     * <p>
+     * O fluxo inclui:
+     * <ol>
+     * <li>Verificação/Criação de sessão.</li>
+     * <li>Persistência da mensagem do usuário.</li>
+     * <li>Recuperação de contexto (RAG) se aplicável.</li>
+     * <li>Construção dinâmica de prompt (Persona, Glossário).</li>
+     * <li>Execução via provedor de IA.</li>
+     * <li>Persistência da resposta e atualização de memória assíncrona.</li>
+     * </ol>
+     *
+     * @param chatRequest DTO contendo a mensagem e metadados da requisição.
+     * @return CompletableFuture com a resposta estruturada.
+     */
     public CompletableFuture<AIProviderResponse> handleChatInteraction(ChatRequest chatRequest) {
         ChatSession session = ensureSession(chatRequest.chatId());
 
@@ -106,7 +145,7 @@ public class AIOrchestrationService {
         ChatMessage userMessage = chatService.saveMessage(session, "user", userPrompt);
         log.info("Mensagem do usuário salva no banco: {}", userMessage.getId());
 
-        // FIX: Recuperação de Contexto
+        // CORREÇÃO: Recuperação de Contexto
         // Se a sessão perdeu o ID do documento (vácuo de contexto), mas o request
         // trouxe o ID,
         // forçamos a atualização da sessão antes de continuar.
@@ -198,6 +237,13 @@ public class AIOrchestrationService {
         }
     }
 
+    /**
+     * Dispara uma tarefa em background para gerar um título curto para a sessão
+     * baseado na primeira mensagem do usuário.
+     *
+     * @param sessionId    ID da sessão a ser renomeada.
+     * @param firstMessage Conteúdo da primeira mensagem para basear o título.
+     */
     private void triggerBackgroudTitleGeneration(Long sessionId, String firstMessage) {
         CompletableFuture.runAsync(() -> {
             try {
@@ -206,12 +252,12 @@ public class AIOrchestrationService {
                         "Gere um título muito curto (3 a 5 palavras max), resumido e sem aspas para uma conversa que começa com: \"%s\". Responda APENAS o título, nada mais.",
                         firstMessage.length() > 200 ? firstMessage.substring(0, 200) + "..." : firstMessage);
 
-                // Use default provider (usually Ollama/Llama) for this quick task
+                // Usa o provedor padrão (geralmente Ollama/Llama) para esta tarefa rápida
                 AIProvider provider = getProvider(DEFAULT_PROVIDER);
                 AIProviderRequest request = new AIProviderRequest(prompt,
                         "Você é um assistente especializado em resumir tópicos.", null, DEFAULT_PROVIDER);
 
-                // Fire and forget (or rather, log failure)
+                // Executa e esquece (fire and forget), apenas logando falhas
                 promptCacheService.executeWithCache(provider, request).thenAccept(response -> {
                     String newTitle = response.getContent();
                     if (newTitle != null) {
@@ -232,6 +278,23 @@ public class AIOrchestrationService {
         });
     }
 
+    /**
+     * Processa a análise de arquivos enviados pelo usuário.     * 
+     * Suporta:
+     * <ul>
+     * <li>Extração de texto via Tika (PDF, DOCX, etc).</li>
+     * <li>Análise multimodal para imagens.</li>
+     * <li>Roteamento inteligente de estratégia (One-Shot vs Map-Reduce vs
+     * RAG).</li>
+     * <li>Fallback automático de provedores baseado em tamanho e tipo.</li>
+     * </ul>
+     *
+     * @param userPrompt   Prompt do usuário sobre o arquivo.
+     * @param providerName Nome do provedor forçado (opcional).
+     * @param file         Arquivo enviado.
+     * @return CompletableFuture com a resposta da análise.
+     * @throws IOException Se houver erro na leitura do arquivo.
+     */
     public CompletableFuture<AIProviderResponse> handleFileAnalysis(String userPrompt, String providerName,
             MultipartFile file) throws IOException {
         log.info(">>> [ORCHESTRATOR] Iniciando análise de arquivo: {}", file.getOriginalFilename());
@@ -360,6 +423,12 @@ public class AIOrchestrationService {
         }
     }
 
+    /**
+     * Processa chunks de texto sequencialmente.
+     * Otimizado para provedores locais (Ollama) onde não há limite restrito de
+     * taxa,
+     * mas o hardware é o gargalo.
+     */
     private CompletableFuture<AIProviderResponse> processChunksSequentially(
             List<Document> chunks,
             PromptPair basePrompts,
@@ -399,6 +468,11 @@ public class AIOrchestrationService {
         });
     }
 
+    /**
+     * Processa chunks de texto com controle de taxa (Rate Limiting) e semáforo.
+     * Otimizado para provedores de nuvem (Groq) para respeitar limites de
+     * tokens/minuto (TPM).
+     */
     private CompletableFuture<AIProviderResponse> processChunksWithRateLimit(
             List<Document> chunks,
             PromptPair basePrompts,
@@ -446,6 +520,17 @@ public class AIOrchestrationService {
         });
     }
 
+    /**
+     * Combina (reduz) os resultados parciais dos chunks em uma resposta final
+     * coerente.
+     *
+     * @param partialResults Lista de resumos/análises de cada chunk.
+     * @param basePrompts    Prompts base.
+     * @param provider       Provedor de IA.
+     * @param providerName   Nome do provedor.
+     * @param userPrompt     Prompt original do usuário.
+     * @return Resposta consolidada.
+     */
     private AIProviderResponse reduceResults(List<String> partialResults, PromptPair basePrompts, AIProvider provider,
             String providerName, String userPrompt) {
         if (partialResults.isEmpty()) {
@@ -470,6 +555,10 @@ public class AIOrchestrationService {
         }
     }
 
+    /**
+     * Processa documentos pequenos que cabem inteiros no contexto (One-Shot).
+     * Envia o documento completo e o prompt em uma única chamada.
+     */
     private CompletableFuture<AIProviderResponse> processOneShot(
             String documentContent,
             PromptPair basePrompts,
@@ -492,6 +581,23 @@ public class AIOrchestrationService {
         return executeAndLogTask(request, provider, "análise one-shot");
     }
 
+    /**
+     * Executa o fluxo de RAG (Retrieval-Augmented Generation) em duas etapas:
+     * 1. Extração: Identifica trechos relevantes e respostas potenciais.
+     * 2. Auditoria/Síntese: Verifica se a resposta foi realmente encontrada e
+     * formata com referências.
+     *
+     * @param documentId   ID do documento no Vector Store.
+     * @param document     Conteúdo bruto (opcional neste ponto).
+     * @param userPrompt   Pergunta do usuário.
+     * @param basePrompts  Prompts base.
+     * @param provider     Provedor de IA.
+     * @param providerName Nome do provedor.
+     * @param evidences    Lista de evidências recuperadas pelo serviço de busca
+     *                     vetorial.
+     * @param docProfile   Perfil do documento (para glossário dinâmico).
+     * @return Future com a resposta auditada.
+     */
     private CompletableFuture<AIProviderResponse> processWithRAG(
             String documentId,
             Document document,
@@ -544,7 +650,8 @@ public class AIOrchestrationService {
                 log.info("✅ Etapa 1: Resposta de extração recebida.");
 
                 AuditedAnswer finalAnswer;
-                // FIX: A lógica anterior descartava respostas parciais se contivesse a frase.
+                // CORREÇÃO: A lógica anterior descartava respostas parciais se contivesse a
+                // frase.
                 // Agora verificamos se a resposta é, em essência, APENAS a negativa.
                 boolean isEssentiallyEmpty = extractedContent == null || extractedContent.isBlank();
                 boolean isStrictlyNotFound = extractedContent != null &&
@@ -584,6 +691,14 @@ public class AIOrchestrationService {
 
     private static final int MAX_EVIDENCE_CHARS = 12000; // ~3000 tokens, otimizado para limite de 6k TPM
 
+    /**
+     * Formata e seleciona as evidências para o contexto do RAG, priorizando tabelas
+     * e métricas.
+     * Limita o tamanho total em caracteres para caber no contexto.
+     *
+     * @param evidences Lista completa de evidências encontradas.
+     * @return String formatada com as evidências selecionadas.
+     */
     private String formatEvidences(List<Evidence> evidences) {
         StringBuilder sb = new StringBuilder();
         int currentLength = 0;
@@ -599,10 +714,10 @@ public class AIOrchestrationService {
                 .filter(e -> !isTableOrMetrics(e))
                 .toList();
 
-        // Strategy: Fill with Priority first, then Standard, then Sort by original
-        // index.
+        // Estratégia: Preencher com Prioritárias primeiro, depois Standard, então
+        // Reordenar pelo índice original.
 
-        // Add Priority Evidences
+        // Adiciona Evidências Prioritárias
         for (Evidence e : priorityEvidences) {
             String formatted = formatEvidenceItem(e, -1);
             if (currentLength + formatted.length() <= MAX_EVIDENCE_CHARS) {
@@ -613,7 +728,7 @@ public class AIOrchestrationService {
             }
         }
 
-        // Add Standard Evidences (until limit)
+        // Adiciona Evidências Padrão (até o limite)
         for (Evidence e : standardEvidences) {
             String formatted = formatEvidenceItem(e, -1);
             if (currentLength + formatted.length() <= MAX_EVIDENCE_CHARS) {
@@ -622,7 +737,7 @@ public class AIOrchestrationService {
             }
         }
 
-        // Reorder list to original flow (Intersection of Original & Selected)
+        // Reordena lista para o fluxo original (Interseção de Original & Selecionados)
         List<Evidence> finalSelection = evidences.stream()
                 .filter(selectedEvidences::contains)
                 .toList();
@@ -644,6 +759,10 @@ public class AIOrchestrationService {
                 || excerpt.contains("has_table=true");
     }
 
+    /**
+     * Expande a query do usuário com termos do glossário dinâmico.
+     * Ex: "O que é IDC?" -> "O que é IDC (Índice de Dispersão de Contexto)?"
+     */
     private String expandQueryWithDynamicTerms(String query, DocumentAnalyzer.DocumentProfile profile) {
         if (profile == null || profile.dynamicGlossary.isEmpty()) {
             return query;
@@ -669,6 +788,10 @@ public class AIOrchestrationService {
         return expanded;
     }
 
+    /**
+     * Enriquece o System Prompt com o glossário de domínio (estático e dinâmico).
+     * Fornece definições contextuais para a IA.
+     */
     private String enrichSystemPromptWithGlossary(String baseSystemPrompt, String userQuery,
             DocumentAnalyzer.DocumentProfile profile) {
         Map<String, String> staticDefinitions = documentAnalyzer.getTermDefinitions();
@@ -831,6 +954,13 @@ public class AIOrchestrationService {
         return "{\"answer\":{\"markdown\":\"❌ Erro interno ao processar a resposta da IA.\",\"plainText\":\"❌ Erro interno ao processar a resposta da IA.\"},\"references\":[]}";
     }
 
+    /**
+     * Processa requisições de assistência de conhecimento (Knowledge Assist).
+     * Suporta comandos como CONTINUE, SUMMARIZE, FIX_GRAMMAR, etc.
+     *
+     * @param request DTO da requisição.
+     * @return Future com a resposta do assistente.
+     */
     public CompletableFuture<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse> processKnowledgeAssist(
             com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest request) {
         log.info(">>> [ORCHESTRATOR] Processando Knowledge Assist: {}", request.getCommand());
@@ -840,25 +970,25 @@ public class AIOrchestrationService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // CHECK FOR AGENT MODE
+                // VERIFICAÇÃO DE MODO AGENTE
                 if (request.isAgentMode() && request.getKnowledgeId() != null) {
                     log.info("🤖 AGENT MODE ATIVADO para Knowledge Item {}", request.getKnowledgeId());
                     return processAgentMode(request, provider, providerName);
                 }
 
-                // ORIGINAL THINKING MODE LOGIC
+                // LÓGICA ORIGINAL DE MODO PENSAMENTO (THINKING MODE)
                 String prompt;
                 String systemPrompt = "Você é um assistente de escrita inteligente integrado a um editor de texto (tipo Notion AI). "
                         +
                         "Sua tarefa é ajudar o usuário a escrever, editar e melhorar notas.";
 
-                // PERSISTENCE LOGIC START
+                // INÍCIO DA LÓGICA DE PERSISTÊNCIA
                 ChatSession session = null;
                 boolean isAgentMode = request
                         .getCommand() == com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest.Command.ASK_AGENT;
 
                 if (isAgentMode && request.getKnowledgeId() != null) {
-                    // Try to find existing session for this Knowledge Item
+                    // Tenta encontrar sessão existente para este Knowledge Item
                     Optional<ChatSession> existingSession = chatSessionRepository
                             .findByKnowledgeItemId(request.getKnowledgeId());
 
@@ -866,11 +996,11 @@ public class AIOrchestrationService {
                         session = existingSession.get();
                         log.info("Sessão existente encontrada: {}", session.getId());
                     } else {
-                        // Create new session
+                        // Cria nova sessão
                         com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem item = knowledgeItemRepository
                                 .findById(request.getKnowledgeId())
                                 .orElseThrow(() -> new IllegalArgumentException(
-                                        "Knowledge Item not found: " + request.getKnowledgeId()));
+                                        "Knowledge Item não encontrado: " + request.getKnowledgeId()));
 
                         session = new ChatSession();
                         session.setTitle("Chat: " + item.getTitle());
@@ -880,7 +1010,7 @@ public class AIOrchestrationService {
                         log.info("Nova sessão de chat criada para KnowledgeItem {}: {}", item.getId(), session.getId());
                     }
                 }
-                // PERSISTENCE LOGIC END
+                // FIM DA LÓGICA DE PERSISTÊNCIA
 
                 switch (request.getCommand()) {
                     case CONTINUE -> {
@@ -905,20 +1035,20 @@ public class AIOrchestrationService {
                         if (request.isUseContext()) {
                             log.info("🕵️ Modo Agente com Contexto (RAG) - Buscando em outras notas...");
 
-                            // Perform RAG search across ALL knowledge items
+                            // Executa busca RAG em TODOS os itens de conhecimento
                             String searchQuery = request.getInstruction();
                             StringBuilder ragEvidence = new StringBuilder();
 
                             try {
-                                // Get all knowledge items to search across them
+                                // Recupera todos os itens para busca cruzada
                                 List<com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem> allItems = knowledgeItemRepository
                                         .findAll();
 
                                 List<Evidence> allEvidences = new ArrayList<>();
 
-                                // Search each indexed knowledge item
+                                // Busca em cada item indexado
                                 for (var item : allItems) {
-                                    // Skip the current note
+                                    // Pula a nota atual (já está no contexto)
                                     if (request.getKnowledgeId() != null
                                             && item.getId().equals(request.getKnowledgeId())) {
                                         continue;
@@ -929,7 +1059,7 @@ public class AIOrchestrationService {
                                         List<Evidence> evidences = ragService.queryIndexedDocument(docId, searchQuery,
                                                 3);
                                         for (Evidence ev : evidences) {
-                                            if (ev.score() >= 0.75) { // Only high-relevance results
+                                            if (ev.score() >= 0.75) { // Apenas resultados de alta relevância
                                                 allEvidences.add(ev);
                                             }
                                         }
@@ -938,7 +1068,7 @@ public class AIOrchestrationService {
                                     }
                                 }
 
-                                // Sort by score and take top 5
+                                // Classifica por score e pega o top 5
                                 allEvidences.sort((a, b) -> Double.compare(b.score(), a.score()));
                                 List<Evidence> topEvidences = allEvidences.stream().limit(5).toList();
 
@@ -1010,7 +1140,7 @@ public class AIOrchestrationService {
     }
 
     /**
-     * Process request in AGENT MODE - generates structured diff proposals
+     * Processa requisição em MODO AGENTE - gera propostas de diff estruturadas.
      */
     private com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse processAgentMode(
             com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest request,
@@ -1018,16 +1148,16 @@ public class AIOrchestrationService {
             String providerName) {
 
         try {
-            // 1. FETCH KNOWLEDGE CONTENT FROM DB (not from request)
+            // 1. RECUPERAR CONTEÚDO DO BANCO (fonte da verdade, não do request)
             com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem item = knowledgeItemRepository
                     .findById(request.getKnowledgeId())
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "Knowledge Item not found: " + request.getKnowledgeId()));
+                            "Knowledge Item não encontrado: " + request.getKnowledgeId()));
 
             String currentContent = item.getContent() != null ? item.getContent() : "";
-            log.info("📄 Fetched knowledge content from DB: {} chars", currentContent.length());
+            log.info("📄 Conteúdo recuperado do banco: {} caracteres", currentContent.length());
 
-            // 2. BUILD PROMPT FOR DIFF GENERATION
+            // 2. CONSTRUIR PROMPT PARA GERAÇÃO DE DIFF
             String systemPrompt = """
                     Você é um arquiteto de conhecimento e editor sênior.
                     Sua tarefa é analisar a estrutura do documento e propor mudanças cirúrgicas e contextuais.
@@ -1074,7 +1204,7 @@ public class AIOrchestrationService {
                     Gere as mudanças necessárias em formato JSON.
                     """, currentContent, request.getInstruction());
 
-            // 3. CALL AI TO GENERATE DIFF
+            // 3. CHAMADA DE IA PARA GERAR DIFF
             AIProviderRequest aiRequest = new AIProviderRequest(
                     userPrompt,
                     systemPrompt,
@@ -1085,27 +1215,27 @@ public class AIOrchestrationService {
                     null,
                     null,
                     null,
-                    0.3, // Low temperature for structured output
-                    4096 // Higher token limit for Agent Mode diffs
+                    0.3, // Temperatura baixa para output estruturado
+                    4096 // Limite maior para diffs do Modo Agente
             );
 
-            AIProviderResponse aiResponse = executeAndLogTask(aiRequest, provider, "Agent Mode Diff Generation").get();
+            AIProviderResponse aiResponse = executeAndLogTask(aiRequest, provider, "Geração de Diff (Agente)").get();
             String jsonResponse = aiResponse.getContent();
 
             log.info("🤖 AI Response: {}", jsonResponse);
 
-            // 4. PARSE JSON RESPONSE
+            // 4. PARSE DA RESPOSTA JSON
             String cleanJson = sanitizeResponse(jsonResponse);
             com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal proposal = parseAgentProposal(
                     cleanJson,
                     request.getKnowledgeId(),
                     currentContent);
 
-            // 5. STORE PROPOSAL IN CACHE
+            // 5. ARMAZENAR PROPOSTA EM CACHE
             String proposalId = proposalCacheService.storeProposal(proposal);
-            log.info("✅ Proposal {} stored for knowledge {}", proposalId, request.getKnowledgeId());
+            log.info("✅ Proposta {} armazenada para o item {}", proposalId, request.getKnowledgeId());
 
-            // 6. RETURN PROPOSAL TO FRONTEND
+            // 6. RETORNAR PROPOSTA AO FRONTEND
             com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse response = new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse(
                     null, true, "Proposta gerada com sucesso");
             response.setProposal(proposal);
@@ -1122,12 +1252,13 @@ public class AIOrchestrationService {
     }
 
     /**
-     * Sanitize AI response to fix common JSON issues (backticks, markdown blocks)
+     * Sanitiza a resposta da IA para corrigir problemas comuns de JSON (backticks,
+     * blocos markdown).
      */
     private String sanitizeResponse(String jsonResponse) {
         String clean = jsonResponse.trim();
 
-        // FIX: Extract JSON part if the response contains conversational text
+        // FIX: Extrai parte JSON se houver texto conversacional
         int firstBrace = clean.indexOf("{");
         int lastBrace = clean.lastIndexOf("}");
 
@@ -1135,8 +1266,7 @@ public class AIOrchestrationService {
             clean = clean.substring(firstBrace, lastBrace + 1);
         }
 
-        // Remove markdown code blocks if they still exist (though substring should
-        // handle it mostly)
+        // Remove blocos de markdown se existirem
         if (clean.startsWith("```json")) {
             clean = clean.substring(7);
         } else if (clean.startsWith("```")) {
@@ -1147,11 +1277,11 @@ public class AIOrchestrationService {
         }
         clean = clean.trim();
 
-        // FIX: Replace backticks used as quotes with double quotes
-        // Pattern: look for `...` that contains newlines or is used as value
-        // We use a specific regex to find backticked strings and convert them to valid
-        // JSON strings
-        // Added DOTALL to support multi-line strings inside backticks
+        // FIX: Substitui backticks usados como aspas por aspas duplas
+        // Padrão: busca `...` que contém quebras de linha ou é usado como valor
+        // Usamos regex específico para converter strings com backtick para strings JSON
+        // válidas
+        // DOTALL adicionado para suportar strings multilinha dentro de backticks
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("`([^`]*)`", java.util.regex.Pattern.DOTALL);
         java.util.regex.Matcher matcher = pattern.matcher(clean);
 
@@ -1174,7 +1304,7 @@ public class AIOrchestrationService {
     }
 
     /**
-     * Parse AI JSON response into KnowledgeAgentProposal
+     * Faz o parse da resposta JSON da IA para o objeto KnowledgeAgentProposal.
      */
     private com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal parseAgentProposal(
             String jsonResponse,

@@ -8,7 +8,10 @@
 4. [Engenharia de Prompt e Memória](#4-engenharia-de-prompt-e-memória)
 5. [Bounded Contexts e Domínios de Negócio](#5-bounded-contexts-e-domínios-de-negócio)
 6. [Justificativas Tecnológicas e Trade-offs](#6-justificativas-tecnológicas-e-trade-offs)
-7. [Trade-offs Atuais e Roadmap](#7-trade-offs-atuais-e-roadmap)
+7. [Conexões com APIs Externas e Integrações](#7-conexões-com-apis-externas-e-integrações)
+8. [Modelagem de Dados e Esquema do Banco](#8-modelagem-de-dados-e-esquema-do-banco)
+9. [Trade-offs Atuais e Roadmap](#9-trade-offs-atuais-e-roadmap)
+10. [Conclusão](#10-conclusão)
 
 ---
 
@@ -77,7 +80,7 @@ sequenceDiagram
     API->>API: 6. Coleta contexto (Perfil, Nível, etc.)
     API->>API: 7. Constrói o Prompt de Análise
     
-    API->>+AIProviders: 8. POST (Gemini ou Groq)
+    API->>+AIProviders: 8. POST (Ollama ou Groq)
     Note over API,AIProviders: Lógica de orquestração decide o provedor/modelo
     AIProviders-->>-API: 9. Retorna o texto da análise
     
@@ -97,7 +100,7 @@ sequenceDiagram
 1. **Recepção de Requisição**: Frontend envia requisição HTTP para API
 2. **Coleta de Contexto**: Sistema busca dados relevantes (integração GitHub, perfil do usuário)
 3. **Construção de Prompt**: Engenharia de prompt com contexto coletado
-4. **Orquestração de IA**: Seleção dinâmica de provedor/modelo
+4. **Orquestração de IA**: Seleção dinâmica (Ollama para local/privacidade, Groq para velocidade/nuvem)
 5. **Processamento de Resposta**: Validação e formatação da resposta
 6. **Persistência**: Salvamento de conversa e contexto
 7. **Ciclo de Memória**: Atualização assíncrona do perfil de aprendizado
@@ -106,7 +109,7 @@ sequenceDiagram
 
 ## 3. Padrão AI Provider e Orquestração
 
-Para evitar acoplamento forte com um único modelo de IA, foi implementado o **Padrão Strategy**. O `AIService` depende de uma interface `AIProvider`, e `GeminiProvider` e `GroqProvider` são implementações concretas.
+Para evitar acoplamento forte com um único modelo de IA, foi implementado o **Padrão Strategy**. O `AIService` depende de uma interface `AIProvider`, e `OllamaProvider` e `GroqProvider` são implementações concretas.
 
 ### 3.1. Interface AIProvider
 
@@ -120,12 +123,18 @@ public interface AIProvider {
 
 ### 3.2. Serviço de Orquestração
 
-O `GroqOrchestratorService` adiciona uma camada de decisão que permite ao sistema:
+O **Nível Global**: `AIOrchestratorService` pode rotear entre provedores (Ollama → Groq) que permite ao sistema:
 
 - **Seleção Inteligente**: Escolher o provedor/modelo mais adequado para a tarefa
 - **Otimização de Recursos**: Usar modelo rápido para tarefas simples, modelo poderoso para análises complexas
 - **Fallback Automático**: Implementar lógica de fallback quando modelo primário falha
 - **Monitoramento**: Rastrear performance e disponibilidade de cada provedor
+
+#### Suporte a Modo Agente (Knowledge Editor)
+Para requisições de edição de conhecimento (`KnowledgeAIRequest`), o orquestrador altera seu fluxo padrão:
+- **Bypass de Chat**: Ignora histórico de conversa (`ChatSession`) para focar no conteúdo do item.
+- **System Prompt Rígido**: Instrui a geração exclusiva de JSON (Diff Format) para edição estruturada.
+- **Output Parsing**: Valida e converte a resposta bruta da IA em objetos `KnowledgeAgentProposal`, garantindo segurança na aplicação de mudanças.
 
 ### 3.3. Benefícios da Abstração
 
@@ -340,15 +349,11 @@ com.matheusdev.mindforge/
 ### 6.3. Escolha dos Modelos de IA (Multi-Provider)
 
 **Provedores**:
-- **Google Gemini**: Modelos de linguagem multimodal
 - **Groq**: Infraestrutura de IA de alta performance
 
 **Justificativa**:
-
-**Google Gemini**:
-- Capacidades multimodais (essencial para OCR e análise de imagens)
-- Acessibilidade e facilidade de integração
-- Performance de ponta em raciocínio complexo
+- **Ollama Vision**: Suporte local experimental para multimodalidade (Llava/Qwen-VL)
+- **Groq Vision**: Suporte futuro para multimodalidade de alta performance
 
 **Groq**:
 - Foco em alta velocidade (tokens/segundo)
@@ -401,58 +406,20 @@ O MindForge integra-se com múltiplas APIs externas para fornecer funcionalidade
 
 ```mermaid
 flowchart TD
-    App[MindForge API] --> GeminiClient[Gemini Client<br/>RestTemplate]
+    App[MindForge API] --> OllamaClient[Ollama Client<br/>RestTemplate]
     App --> GroqClient[Groq Client<br/>RestTemplate]
     App --> GitHubClient[GitHub Client<br/>RestTemplate]
     
-    GeminiClient --> GeminiAPI[Google Gemini API<br/>https://generativelanguage.googleapis.com]
+    OllamaClient --> OllamaAPI[Ollama Local API<br/>http://localhost:11434]
     GroqClient --> GroqAPI[Groq API<br/>https://api.groq.com]
     GitHubClient --> GitHubAPI[GitHub API<br/>https://api.github.com]
     
-    GeminiClient -.->|Circuit Breaker<br/>Retry<br/>Rate Limiter<br/>Time Limiter| Resilience[Resilience4j]
+    OllamaClient -.->|Resilience (Retries)| Resilience[Resilience4j]
     GroqClient -.->|Circuit Breaker<br/>Retry<br/>Rate Limiter<br/>Time Limiter| Resilience
     GitHubClient -.->|Token Refresh<br/>Error Handling| GitHubTokenService[GitHub Token Service]
 ```
 
-### 7.2. Integração com Google Gemini API
 
-**Propósito**: Capacidades multimodais, análise de imagens, OCR.
-
-**Cliente HTTP**: `RestTemplate` (Spring Framework)
-
-**Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`
-
-**Autenticação**: API Key via query parameter (`&key={apiKey}`)
-
-**Características**:
-- **Suporte Multimodal**: Texto e imagens (base64)
-- **Headers**: `Content-Type: application/json`
-- **Request Body**: `GeminiRequest` com lista de `Content` e `Part`
-- **Response Body**: `GeminiResponse` com lista de `Candidate`
-
-**Fluxo de Requisição**:
-```mermaid
-sequenceDiagram
-    participant Service as GeminiProvider
-    participant RestTemplate as RestTemplate
-    participant Gemini as Gemini API
-    
-    Service->>Service: Construir GeminiRequest
-    Service->>RestTemplate: POST com headers e body
-    RestTemplate->>Gemini: HTTP POST Request
-    Note over Gemini: Processa com Gemini Pro
-    Gemini-->>RestTemplate: JSON Response
-    RestTemplate-->>Service: GeminiResponse
-    Service->>Service: Extrair conteúdo da resposta
-    Service->>Service: Retornar AIProviderResponse
-```
-
-**Resiliência**:
-- Circuit Breaker (50% failure rate)
-- Retry (3 tentativas, 500ms entre tentativas)
-- Rate Limiter (10 chamadas/segundo)
-- Time Limiter (5 segundos timeout)
-- Fallback method implementado
 
 ### 7.3. Integração com Groq API
 
@@ -765,7 +732,7 @@ O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade
 - **Desenvolvimento Acelerado**: Redução de complexidade inicial
 - **Arquitetura Preparada**: Estrutura permite adição futura de autenticação
 
-### 7.2. Próximas Atualizações (Roadmap)
+### 9.2. Próximas Atualizações (Roadmap)
 
 #### Curto Prazo
 1. **Sistema de Autenticação e Autorização**
@@ -807,7 +774,7 @@ O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade
 
 ---
 
-## 8. Conclusão
+## 10. Conclusão
 
 Este documento serve como um guia abrangente para a arquitetura do MindForge, detalhando suas escolhas de design, fluxos de dados, padrões implementados e o caminho para sua evolução.
 

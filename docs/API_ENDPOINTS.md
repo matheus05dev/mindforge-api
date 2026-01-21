@@ -896,11 +896,11 @@ Análise genérica de conhecimento (qualquer área).
   "question": "Como funciona o algoritmo de ordenação quicksort?",
   "subjectId": 1,
   "projectId": null,
-  "provider": "gemini"
+  "provider": "ollama"
 }
 ```
 
-**Provedores:** `gemini`, `groq` ou `null` (usa "mindforge" - padrão)
+**Provedores:** `ollama`, `groq` ou `null` (usa "mindforge" - padrão)
 
 **Resposta:**
 ```json

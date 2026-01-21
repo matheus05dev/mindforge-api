@@ -9,6 +9,7 @@
 5. [Resiliência e Tratamento de Falhas](#5-resiliência-e-tratamento-de-falhas)
 6. [Padrões de Engenharia de Prompt](#6-padrões-de-engenharia-de-prompt)
 7. [Orquestração Multi-Provider](#7-orquestração-multi-provider)
+8. [Agente de Conhecimento (Writer/Editor)](#8-agente-de-conhecimento-writereditor)
 
 ---
 
@@ -51,13 +52,17 @@ O padrão Strategy torna o sistema **agnóstico ao provedor**, proporcionando:
 1. **Flexibilidade Extensível**
    - Troca de provedores sem impacto na lógica de negócio
    - Adição de novos provedores (Anthropic, OpenAI) com implementação mínima
-   - Isolamento de detalhes de implementação de cada provedor
+   - Isolamento de detalhes de implementação de cada provedor (Ollama, Groq)
 
 2. **Otimização Contextual**
    - Seleção dinâmica de provedor baseada no tipo de tarefa
-   - Uso de Gemini para capacidades multimodais
-   - Uso de Groq para tarefas que exigem baixa latência
-   - Otimização de custo através de escolha inteligente
+   **Local First (Privacy & Cost)**
+       - Uso de Ollama (Llama 3, Qwen) como padrão para zero-cost inference
+       - Processamento de dados sensíveis inteiramente local (privacidade total)
+   
+   **Cloud Bursting (Performance)**
+       - Uso de Groq (Llama 3 70B) para tarefas complexas que exigem raciocínio avançado
+       - Fallback automático para Groq quando Ollama está indisponível ou sobrecarregado
 
 **Trade-offs**:
 - **Complexidade Inicial**: Camada adicional de abstração requer design cuidadoso
@@ -128,11 +133,11 @@ flowchart TD
     PromptOCR --> AIProvider
     
     subgraph "5. APIs Externas"
-        AIProvider --> GeminiAPI["Google Gemini API"]
-        AIProvider --> GroqAPI["Groq API"]
+        AIProvider --> OllamaAPI["Ollama Local API"]
+        AIProvider --> GroqAPI["Groq Cloud API"]
     end
 
-    GeminiAPI --> AIProvider
+    OllamaAPI --> AIProvider
     GroqAPI --> AIProvider
     
     AIProvider --> ResponseProcessor["6. Processar Resposta"]
@@ -143,8 +148,8 @@ flowchart TD
     subgraph "Ciclo de Aprendizado"
         AsyncMemory --> MetaPrompt["Construir Meta-Prompt de Análise"]
         MetaPrompt --> AIProviderMemory["AI Provider"]
-        AIProviderMemory --> GeminiAPIMemory["Google Gemini API"]
-        GeminiAPIMemory --> UpdateProfile["Atualizar Perfil do Usuário no DB"]
+        AIProviderMemory --> OllamaAPIMemory["Ollama Local API"]
+        OllamaAPIMemory --> UpdateProfile["Atualizar Perfil do Usuário no DB"]
     end
 ```
 
@@ -190,7 +195,7 @@ O `AIProvider` atua como camada de abstração que:
 
 Integração com provedores externos:
 
-- **Google Gemini**: Para capacidades multimodais e análise complexa
+- **Ollama**: Para privacidade e execução local (padrão)
 - **Groq**: Para tarefas que exigem baixa latência e alta throughput
 
 ---
@@ -277,7 +282,7 @@ flowchart TD
     Retry -->|Tentativa 1-3| TimeLimiter{Time Limiter}
     Retry -->|Todas Falharam| CircuitBreaker
     
-    TimeLimiter -->|Dentro do Timeout| API[API Externa<br/>Gemini/Groq]
+    TimeLimiter -->|Dentro do Timeout| API[API Externa<br/>Ollama/Groq]
     TimeLimiter -->|Timeout| Retry
     
     API -->|Sucesso| Success[Resposta ao Usuário]
@@ -295,7 +300,7 @@ O sistema utiliza configurações centralizadas em `ResilienceConfig`:
 
 #### Instâncias de Resiliência
 
-- **`aiProvider`**: Configuração para provedores de IA (Gemini, Groq)
+- **`aiProvider`**: Configuração para provedores de IA (Ollama, Groq)
 - **`githubClient`**: Configuração para integração GitHub (futuro)
 
 #### Circuit Breaker
@@ -456,18 +461,11 @@ sequenceDiagram
 **Comportamento**:
 - **Nível de Provider**: Cada `AIProvider` implementa método `fallback()` chamado quando Circuit Breaker abre
 - **Nível de Orquestração**: `GroqOrchestratorService` implementa fallback entre modelos (VERSATILE → INSTANT)
-- **Nível Global**: `AIOrchestratorService` pode rotear entre provedores (Gemini → Groq)
-
-**Fallback por Camada**:
-```mermaid
-flowchart TD
-    Request[Requisição de IA] --> AIOrch[AIOrchestratorService]
-    
-    AIOrch -->|Preferência: Gemini| GeminiProvider[GeminiProvider]
+    AIOrch -->|Preferência: Ollama| OllamaProvider[OllamaProvider]
     AIOrch -->|Preferência: Groq| GroqOrch[GroqOrchestratorService]
     
-    GeminiProvider -->|Circuito Aberto| GeminiFallback[Fallback: Mensagem de Erro]
-    GeminiProvider -->|Sucesso| Response1[Resposta]
+    OllamaProvider -->|Falha/Timeout| OllamaFallback[Fallback: Groq]
+    OllamaProvider -->|Sucesso| Response1[Resposta]
     
     GroqOrch -->|Tenta VERSATILE| GroqProvider[GroqProvider]
     
@@ -478,7 +476,7 @@ flowchart TD
     GroqProvider2 -->|Sucesso| Response2[Resposta]
     GroqProvider2 -->|Circuito Aberto| GroqFallback
     
-    GeminiFallback --> FinalResponse[Resposta Final]
+    OllamaFallback --> GroqOrch
     Response1 --> FinalResponse
     Response2 --> FinalResponse
     GroqFallback --> FinalResponse
@@ -507,7 +505,7 @@ flowchart TD
 | **Time Limiter** | Timeout Duration | 180s | Tempo máximo de espera por resposta (aumentado para Ollama) |
 
 **Instâncias de Resiliência**:
-- `aiProvider`: Provedores de IA (Gemini, Groq)
+- `aiProvider`: Provedores de IA (Ollama, Groq)
 - `githubClient`: Cliente GitHub (configuração futura)
 
 ---
@@ -561,28 +559,19 @@ O sistema implementa orquestração inteligente para selecionar o provedor/model
 - **Capacidade do Modelo**: Tamanho de contexto, capacidade de raciocínio
 - **Custo-Benefício**: Balanceamento entre qualidade e custo
 
-### 7.2. Provedores Implementados
+### 7.2. Detalhes de Implementação
 
 #### Ollama (Local)
-- **Forças**: Gratuito, privado, funciona offline, sem limites de API
-- **Uso**: Análise de documentos, chat geral, processamento local
-- **Latência**: Média (depende do hardware local)
-- **Custo**: Zero (100% gratuito)
-- **Modelos Suportados**: 
-  - Chat: `llama3.2` (padrão)
-  - Embeddings: `nomic-embed-text`, `nomic-embed-text-v2-moe`
+- **Forças**: Gratuito, privado, zero-latência de rede
+- **Uso**: Processamento padrão de texto, RAG e meta-análise
+- **Modelos**: Llama 3, Mistral, Qwen
 - **Configuração**: 
   - URL: `http://localhost:11434/api/chat`
   - Timeout: 180 segundos (permite processamento completo)
   - Fallback: Groq (se Ollama falhar ou timeout)
 - **Salvamento no Banco**: Todas as interações são salvas automaticamente para RAG
 
-#### Google Gemini
-- **Forças**: Multimodalidade, raciocínio complexo, análise profunda
-- **Uso**: Análise de código, OCR, análises estratégicas
-- **Latência**: Média-Alta
-- **Custo**: Variável
-- **Modelos Suportados**: Gemini Pro (via API)
+#### Groq (Cloud)
 
 #### Groq - Múltiplos Agentes/Modelos
 
@@ -705,7 +694,7 @@ O `AIOrchestratorService` implementa roteamento entre provedores:
 
 - **Primary-Fallback**: Provedor primário com fallback automático para secundário
   - **Ollama** (padrão) → **Groq** (fallback se Ollama falhar)
-- **Task-Based Routing**: Roteamento baseado em tipo de tarefa (multimodal → Gemini, texto → Ollama/Groq)
+- **Task-Based Routing**: Roteamento baseado em tipo de tarefa (multimodal → Ollama Vision, texto → Ollama/Groq)
 - **Load-Aware Selection**: Seleção baseada em carga do sistema (futuro)
 - **Cost Optimization**: Seleção considerando custo-benefício (futuro)
 - **User Preference**: Respeita preferência do usuário (`preferredProvider` na requisição)
@@ -741,7 +730,76 @@ O sistema salva automaticamente todas as interações no banco de dados para hab
 
 ---
 
-## 8. Conclusão
+## 8. Agente de Conhecimento (Writer/Editor)
+
+Diferente do modo "Chat" (conversacional), o MindForge possui um **Modo Agente** especializado na criação e edição de documentos (`KnowledgeItem`).
+
+### 8.1. Fluxo de Edição Estruturada (Agent Mode)
+
+O objetivo não é apenas conversar, mas **agir** sobre o conteúdo. O agente atua como um editor sênior que propõe alterações cirúrgicas.
+
+**Características do Agente:**
+- **Ativo vs Passivo**: Em vez de responder perguntas, ele propõe mudanças no texto.
+- **Saída Estruturada**: Gera estritamente **JSON** contendo um "diff" das alterações.
+- **Context-Aware**: Analisa a estrutura do documento para inserir conteúdo no local semanticamente correto.
+- **Temperatura Baixa**: Opera com temperatura `0.3` para garantir obediência ao formato JSON.
+
+### 8.2. Mecanismo de Diff (JSON Proposal)
+
+O agente recebe o conteúdo atual e a instrução do usuário, e retorna uma proposta de modificação no seguinte formato:
+
+```json
+{
+  "summary": "Adicionei uma seção sobre Streams API pois é fundamental para o tópico de Coleções.",
+  "changes": [
+    {
+      "type": "ADD",
+      "startLine": 45,
+      "endLine": 45,
+      "proposedContent": "### Streams API\nA Streams API permite processamento funcional...",
+      "reason": "Expansão natural do tópico anterior"
+    },
+    {
+      "type": "REPLACE",
+      "startLine": 10,
+      "endLine": 12,
+      "originalContent": "Java é verboso.",
+      "proposedContent": "Java moderna (17+) reduz a verbosidade com Records e var.",
+      "reason": "Atualização técnica"
+    }
+  ]
+}
+```
+
+### 8.3. Pipeline de Processamento (Back-end)
+
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant Orch as AIOrchestrationService
+    participant Prompt as SystemPrompt
+    participant Provider as AIProvider
+    participant Cache as ProposalCache
+
+    Frontend->>Orch: POST /knowledge/analyze (mode=AGENT)
+    Orch->>Orch: Carregar KnowledgeItem do DB
+    Orch->>Prompt: Construir Prompt "Architect/Editor"
+    Orch->>Provider: Request (Temp=0.3, Format=JSON)
+    Provider-->>Orch: JSON Diff Response
+    Orch->>Orch: Parse & Validate JSON
+    Orch->>Cache: Armazenar Proposta (UUID)
+    Orch-->>Frontend: Retornar Proposal ID
+    
+    Note over Frontend: Usuário revisa diff visual
+    Frontend->>Orch: POST /knowledge/apply/{proposalId}
+    Orch->>Orch: Aplicar mudanças no texto
+    Orch->>DB: Persistir nova versão
+```
+
+---
+
+## 9. Conclusão
+
 
 A arquitetura de IA do MindForge demonstra como princípios sólidos de engenharia de software podem ser aplicados para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design—orquestração em Java, padrão Strategy, ciclo de memória assíncrono e múltiplos padrões de resiliência—resultam em um sistema que transcende a categoria de simples cliente de API.
 
@@ -753,5 +811,5 @@ O sistema representa uma plataforma que agrega valor real ao transformar modelos
 
 - [Resilience4j Documentation](https://resilience4j.readme.io/)
 - [Spring Boot Async](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.task-execution-and-scheduling)
-- [Google Gemini API](https://ai.google.dev/docs)
+
 - [Groq API Documentation](https://console.groq.com/docs)

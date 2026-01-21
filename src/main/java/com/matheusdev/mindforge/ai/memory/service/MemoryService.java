@@ -18,6 +18,13 @@ import java.util.concurrent.ExecutionException;
 
 @Service
 @Slf4j
+/**
+ * Serviço responsável pelo gerenciamento de memória e perfil do usuário.
+ * <p>
+ * O serviço analisa o histórico de conversas de forma assíncrona para extrair
+ * insights sobre o perfil de aprendizado do usuário, atualizando-o
+ * continuamente.
+ */
 public class MemoryService {
 
     private final UserProfileAIRepository userProfileAIRepository;
@@ -47,6 +54,17 @@ public class MemoryService {
 
     @Async
     @Transactional
+    /**
+     * Atualiza o perfil do usuário de forma assíncrona baseado no histórico
+     * recente.
+     * <p>
+     * Utiliza uma "meta-análise" via IA para identificar padrões, pontos fortes e
+     * fracos,
+     * atualizando o perfil estruturado no banco de dados.
+     *
+     * @param userId      ID do usuário.
+     * @param chatHistory Lista de mensagens da sessão atual.
+     */
     public void updateUserProfile(Long userId, List<Map<String, String>> chatHistory) {
         try {
             long delay = 5000L; // 5 segundos
@@ -213,7 +231,7 @@ public class MemoryService {
             log.warn("Falha ao fazer parse do conteúdo para análise de memória (usando raw): {}", e.getMessage());
         }
 
-        // Truncate to avoid exploding tokens (e.g. 1000 chars max per message)
+        // Trunca para evitar explosão de tokens (ex: máx 1000 chars por mensagem)
         if (rawContent.length() > 1000) {
             return rawContent.substring(0, 1000) + "... [truncado]";
         }

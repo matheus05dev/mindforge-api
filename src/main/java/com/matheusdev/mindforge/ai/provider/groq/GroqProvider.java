@@ -33,6 +33,22 @@ import java.util.concurrent.CompletableFuture;
 @Service("groqProvider")
 @RequiredArgsConstructor
 @Slf4j
+/**
+ * Implementação do provedor de IA para a API Groq.
+ * <p>
+ * O Groq é utilizado como uma alternativa de alta performance (LPU) para
+ * inferência rápida,
+ * especialmente útil quando o Ollama (local) está sobrecarregado ou para
+ * modelos maiores
+ * (Llama-3 70B) que não cabem na memória local.
+ * <p>
+ * Inclui:
+ * <ul>
+ * <li>Gerenciamento de Budget de Tokens.</li>
+ * <li>Resiliência com Circuit Breaker, Rate Limiter e Retry.</li>
+ * <li>Suporte a multimodalidade (Visão).</li>
+ * </ul>
+ */
 public class GroqProvider implements AIProvider {
 
     private final RestTemplate restTemplate;
@@ -47,6 +63,10 @@ public class GroqProvider implements AIProvider {
 
     @Getter
     @RequiredArgsConstructor
+    /**
+     * Enumeração dos modelos suportados pela Groq.
+     * Define limites de tokens e capacidades específicas (ex: Vision).
+     */
     public enum GroqModel {
         VERSATILE("llama-3.3-70b-versatile", 1024, null),
         INSTANT("llama-3.1-8b-instant", 1024, null),
@@ -77,6 +97,15 @@ public class GroqProvider implements AIProvider {
     @RateLimiter(name = ResilienceConfig.GROQ_INSTANCE)
     @Retry(name = ResilienceConfig.GROQ_INSTANCE)
     @TimeLimiter(name = ResilienceConfig.GROQ_INSTANCE)
+    /**
+     * Executa uma tarefa de IA utilizando a API Groq.
+     * Aplica padrões de resiliência e verifica o budget de tokens antes da
+     * execução.
+     *
+     * @param request Requisição padronizada contendo prompt, mensagens e
+     *                configurações.
+     * @return Future com a resposta da IA.
+     */
     public CompletableFuture<AIProviderResponse> executeTask(AIProviderRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -182,6 +211,13 @@ public class GroqProvider implements AIProvider {
         });
     }
 
+    /**
+     * Método de fallback acionado pelo Resilience4j em caso de falha no Groq.
+     *
+     * @param request Requisição original que falhou.
+     * @param t       Exceção lançada.
+     * @return Resposta de erro formatada.
+     */
     public CompletableFuture<AIProviderResponse> fallback(AIProviderRequest request, Throwable t) {
         log.error("!!! ALERTA !!! Serviço de IA (Groq) indisponível ou falhou. Causa: {}", t.getMessage());
         String errorMessage = "Desculpe, não foi possível processar sua solicitação no momento devido a uma instabilidade no serviço de IA (Groq). Erro: "
