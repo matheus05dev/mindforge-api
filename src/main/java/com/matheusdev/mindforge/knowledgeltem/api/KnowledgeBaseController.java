@@ -94,4 +94,27 @@ public class KnowledgeBaseController {
                                 .map(mapper::toResponse)
                                 .collect(Collectors.toList()));
         }
+
+        // ==================== VERSION MANAGEMENT ====================
+
+        @Operation(summary = "Get version history", description = "Returns version history for a knowledge item")
+        @GetMapping("/{id}/versions")
+        public ResponseEntity<List<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeVersionResponse>> getVersionHistory(
+                        @PathVariable Long id) {
+                return ResponseEntity.ok(service.getVersionHistory(id));
+        }
+
+        @Operation(summary = "Get specific version", description = "Returns a specific version with full content")
+        @GetMapping("/{id}/versions/{versionId}")
+        public ResponseEntity<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeVersionResponse> getVersion(
+                        @PathVariable Long id, @PathVariable Long versionId) {
+                return ResponseEntity.ok(service.getVersion(versionId));
+        }
+
+        @Operation(summary = "Rollback to version", description = "Rollback knowledge item to a specific version")
+        @PostMapping("/{id}/versions/{versionId}/rollback")
+        public ResponseEntity<KnowledgeItemResponse> rollbackToVersion(
+                        @PathVariable Long id, @PathVariable Long versionId) {
+                return ResponseEntity.ok(service.rollbackToVersion(id, versionId));
+        }
 }

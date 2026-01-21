@@ -23,6 +23,8 @@ public class KnowledgeAIController {
 
     private final AIOrchestrationService aiOrchestrationService;
     private final com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository chatSessionRepository;
+    private final com.matheusdev.mindforge.knowledgeltem.service.ProposalCacheService proposalCacheService;
+    private final com.matheusdev.mindforge.knowledgeltem.service.KnowledgeBaseService knowledgeBaseService;
 
     @Operation(summary = "Obtém histórico de chat da nota", description = "Retorna a sessão de chat vinculada a um Knowledge Item.")
     @org.springframework.web.bind.annotation.GetMapping("/{knowledgeId}/session")
@@ -54,6 +56,34 @@ public class KnowledgeAIController {
         } catch (InterruptedException | ExecutionException e) {
             return ResponseEntity.internalServerError()
                     .body(new KnowledgeAIResponse(null, false, "Erro interno: " + e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Aplica proposta aprovada", description = "Aplica as mudanças aprovadas de uma proposta do agente ao knowledge item.")
+    @PostMapping("/proposals/{proposalId}/apply")
+    public ResponseEntity<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeItemResponse> applyProposal(
+            @org.springframework.web.bind.annotation.PathVariable String proposalId,
+            @RequestBody com.matheusdev.mindforge.knowledgeltem.dto.ApprovalRequest approval) {
+        try {
+            // 1. Get proposal from cache
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal proposal = proposalCacheService
+                    .getProposal(proposalId);
+
+            if (proposal == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // 2. Apply changes
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeItemResponse updated = knowledgeBaseService
+                    .applyProposal(proposal, approval);
+
+            // 3. Remove proposal from cache
+            proposalCacheService.removeProposal(proposalId);
+
+            return ResponseEntity.ok(updated);
+
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

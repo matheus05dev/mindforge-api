@@ -5,7 +5,6 @@ import com.matheusdev.mindforge.ai.chat.model.ChatSession;
 import com.matheusdev.mindforge.ai.chat.repository.ChatMessageRepository;
 import com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository;
 import com.matheusdev.mindforge.ai.dto.GenericAnalysisRequest;
-import com.matheusdev.mindforge.project.model.Project;
 import com.matheusdev.mindforge.project.repository.ProjectRepository;
 import com.matheusdev.mindforge.study.subject.model.Subject;
 import com.matheusdev.mindforge.study.subject.repository.SubjectRepository;
@@ -86,7 +85,8 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatSession getOrCreateGenericChatSession(GenericAnalysisRequest request) {
+    public ChatSession getOrCreateGenericChatSession(
+            GenericAnalysisRequest request) {
         ChatSession session = new ChatSession();
         if (request != null && request.getSubjectId() != null) {
             session.setSubject(subjectRepository.findById(request.getSubjectId()).orElse(null));
@@ -111,7 +111,8 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatSession createDocumentAnalysisSession(String fileName, String userPrompt) {
+    public ChatSession createDocumentAnalysisSession(String fileName,
+            String userPrompt) {
         ChatSession session = new ChatSession();
         String title = String.format("Análise de Documento: %s", fileName);
         if (userPrompt != null && userPrompt.length() > 0) {
@@ -122,5 +123,25 @@ public class ChatService {
         session.setCreatedAt(LocalDateTime.now());
         session.setDocumentId(fileName); // Salva o nome do arquivo como documentId
         return chatSessionRepository.save(session);
+    }
+
+    public com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse mapToResponse(ChatSession session) {
+        com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse response = new com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse();
+        response.setId(session.getId());
+        response.setTitle(session.getTitle());
+        response.setDocumentId(session.getDocumentId());
+
+        if (session.getMessages() != null) {
+            response.setMessages(session.getMessages().stream().map(msg -> {
+                com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse.MessageResponse msgResponse = new com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse.MessageResponse();
+                msgResponse.setId(msg.getId());
+                msgResponse.setRole(msg.getRole());
+                msgResponse.setContent(msg.getContent());
+                msgResponse.setCreatedAt(msg.getCreatedAt());
+                return msgResponse;
+            }).collect(java.util.stream.Collectors.toList()));
+        }
+
+        return response;
     }
 }

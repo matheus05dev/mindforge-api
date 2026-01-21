@@ -8,6 +8,8 @@ import java.util.List;
 @Data
 public class ChatSessionResponse {
     private Long id; // Session ID
+    private String title;
+    private String documentId;
     private List<MessageResponse> messages;
 
     @Data

@@ -53,6 +53,7 @@ public class AIOrchestrationService {
     private final VectorStoreService vectorStoreService;
     private final com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeItemRepository knowledgeItemRepository;
     private final com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository chatSessionRepository;
+    private final com.matheusdev.mindforge.knowledgeltem.service.ProposalCacheService proposalCacheService;
 
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
     private static final String FALLBACK_PROVIDER = "groqProvider";
@@ -246,7 +247,7 @@ public class AIOrchestrationService {
             TikaDocumentReader documentReader = new TikaDocumentReader(file.getResource());
             List<org.springframework.ai.document.Document> springDocuments = documentReader.get();
             langchainDocuments = springDocuments.stream()
-                    .map(springDoc -> Document.from(springDoc.getContent(), new Metadata(springDoc.getMetadata())))
+                    .map(springDoc -> Document.from(springDoc.getText(), new Metadata(springDoc.getMetadata())))
                     .collect(Collectors.toList());
             log.info("Documentos extraídos e convertidos para o formato LangChain4j. Total: {}.",
                     langchainDocuments.size());
@@ -304,6 +305,7 @@ public class AIOrchestrationService {
                     true,
                     file.getBytes(),
                     file.getContentType(),
+                    null,
                     null,
                     null,
                     null);
@@ -530,7 +532,8 @@ public class AIOrchestrationService {
                         null,
                         null,
                         null,
-                        0.2 // Temperatura baixa para precisão
+                        0.2, // Temperatura baixa para precisão
+                        null // maxTokens
                 );
 
                 log.info("📤 Etapa 1: Enviando prompt de extração para '{}'.", providerName);
@@ -783,14 +786,12 @@ public class AIOrchestrationService {
                             cause = cause.getCause();
                         }
 
-                        // GRACEFUL DEGRADATION: Fallback para Ollama se Groq estourar budget
-                        boolean isGroqBudgetError = cause.getMessage() != null
-                                && (cause.getMessage().contains("Groq budget excedido")
-                                        || cause.getClass().getSimpleName().contains("GroqBudgetExceeded"));
+                        // GRACEFUL DEGRADATION: Fallback para Ollama em QUALQUER erro do Groq
+                        boolean isOllama = provider.getClass().getSimpleName().toLowerCase().contains("ollama");
 
-                        if (isGroqBudgetError && !provider.getClass().getSimpleName().contains("Ollama")) {
-                            log.warn("⚠️ Groq Budget Excedido na tarefa '{}'. Iniciando FALLBACK para Ollama...",
-                                    taskName);
+                        if (!isOllama) {
+                            log.warn("⚠️ Falha no provedor principal '{}'. Erro: {}. Iniciando FALLBACK para Ollama...",
+                                    taskName, cause.getMessage());
                             AIProvider ollama = getProvider("ollamaProvider");
                             try {
                                 return promptCacheService.executeWithCache(ollama, request).join();
@@ -834,11 +835,18 @@ public class AIOrchestrationService {
             com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest request) {
         log.info(">>> [ORCHESTRATOR] Processando Knowledge Assist: {}", request.getCommand());
 
-        String providerName = DEFAULT_PROVIDER;
+        String providerName = FALLBACK_PROVIDER;
         AIProvider provider = getProvider(providerName);
 
         return CompletableFuture.supplyAsync(() -> {
             try {
+                // CHECK FOR AGENT MODE
+                if (request.isAgentMode() && request.getKnowledgeId() != null) {
+                    log.info("🤖 AGENT MODE ATIVADO para Knowledge Item {}", request.getKnowledgeId());
+                    return processAgentMode(request, provider, providerName);
+                }
+
+                // ORIGINAL THINKING MODE LOGIC
                 String prompt;
                 String systemPrompt = "Você é um assistente de escrita inteligente integrado a um editor de texto (tipo Notion AI). "
                         +
@@ -965,6 +973,11 @@ public class AIOrchestrationService {
                                     request.getInstruction(), request.getContext());
                         }
                     }
+                    case AGENT_UPDATE -> {
+                        // This should be handled by agent mode, but if not, treat as CUSTOM
+                        prompt = String.format("Instrução: %s\n\nTexto: %s", request.getInstruction(),
+                                request.getContext());
+                    }
                     default -> throw new IllegalArgumentException("Comando desconhecido");
                 }
 
@@ -994,5 +1007,211 @@ public class AIOrchestrationService {
                         "Erro: " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * Process request in AGENT MODE - generates structured diff proposals
+     */
+    private com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse processAgentMode(
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIRequest request,
+            AIProvider provider,
+            String providerName) {
+
+        try {
+            // 1. FETCH KNOWLEDGE CONTENT FROM DB (not from request)
+            com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem item = knowledgeItemRepository
+                    .findById(request.getKnowledgeId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Knowledge Item not found: " + request.getKnowledgeId()));
+
+            String currentContent = item.getContent() != null ? item.getContent() : "";
+            log.info("📄 Fetched knowledge content from DB: {} chars", currentContent.length());
+
+            // 2. BUILD PROMPT FOR DIFF GENERATION
+            String systemPrompt = """
+                    Você é um arquiteto de conhecimento e editor sênior.
+                    Sua tarefa é analisar a estrutura do documento e propor mudanças cirúrgicas e contextuais.
+
+                    **DIRETRIZES DE PROPOSICIONAMENTO (CONTEXT-AWARE):**
+                    1. **Análise Estrutural**: Entenda a hierarquia de títulos (#, ##, ###) e o fluxo lógico do texto.
+                    2. **Inserção Contextual**: NUNCA insira conteúdo aleatoriamente no topo ou fim, a menos que seja uma introdução ou conclusão.
+                       - Se o usuário pede "Microservices" em um doc de "Java", procure seção "Avançado", "Arquitetura" ou crie uma nova seção no final se for um tópico avançado.
+                       - Se for um conceito básico, insira nas seções iniciais.
+                    3. **Granularidade**: Se for uma correção pequena, substitua apenas a frase/parágrafo. Se for um tópico novo, adicione a seção completa.
+
+                    **FORMATO DE RESPOSTA:**
+                    Retorne APENAS um JSON válido.
+                    IMPORTANTE: Para strings multilinha, utilize "\\n" explícito. NÃO utilize backticks (`) para envolver strings, isso quebra o parser JSON.
+                    Exemplo CORRETO: "proposedContent": "Linha 1\\nLinha 2"
+                    Exemplo INCORRETO: "proposedContent": `Linha 1
+                    Linha 2`
+
+                    Formato JSON esperado:
+                    {
+                      "summary": "Explique POR QUE escolheu este local para inserção",
+                      "changes": [
+                        {
+                          "type": "ADD", // UM DE: 'ADD', 'REMOVE', 'REPLACE'
+                          "startLine": número_da_linha_inicial,
+                          "endLine": número_da_linha_final,
+                          "originalContent": "conteúdo original (vazio para ADD)",
+                          "proposedContent": "novo conteúdo (vazio para REMOVE) - USE APENAS ASPAS DUPLAS E ESCAPE QUEBRAS DE LINHA",
+                          "reason": "Justificativa da posição (ex: 'Inserido após seção de Arrays por ser um tópico relacionado')"
+                        }
+                      ]
+                    }
+                    """;
+
+            String userPrompt = String.format("""
+                    CONTEÚDO ATUAL:
+                    ```
+                    %s
+                    ```
+
+                    INSTRUÇÃO DO USUÁRIO:
+                    %s
+
+                    Gere as mudanças necessárias em formato JSON.
+                    """, currentContent, request.getInstruction());
+
+            // 3. CALL AI TO GENERATE DIFF
+            AIProviderRequest aiRequest = new AIProviderRequest(
+                    userPrompt,
+                    systemPrompt,
+                    null,
+                    providerName,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0.3, // Low temperature for structured output
+                    4096 // Higher token limit for Agent Mode diffs
+            );
+
+            AIProviderResponse aiResponse = executeAndLogTask(aiRequest, provider, "Agent Mode Diff Generation").get();
+            String jsonResponse = aiResponse.getContent();
+
+            log.info("🤖 AI Response: {}", jsonResponse);
+
+            // 4. PARSE JSON RESPONSE
+            String cleanJson = sanitizeResponse(jsonResponse);
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal proposal = parseAgentProposal(
+                    cleanJson,
+                    request.getKnowledgeId(),
+                    currentContent);
+
+            // 5. STORE PROPOSAL IN CACHE
+            String proposalId = proposalCacheService.storeProposal(proposal);
+            log.info("✅ Proposal {} stored for knowledge {}", proposalId, request.getKnowledgeId());
+
+            // 6. RETURN PROPOSAL TO FRONTEND
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse response = new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse(
+                    null, true, "Proposta gerada com sucesso");
+            response.setProposal(proposal);
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("❌ Erro no Agent Mode", e);
+            return new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAIResponse(
+                    "",
+                    false,
+                    "Erro ao gerar proposta: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sanitize AI response to fix common JSON issues (backticks, markdown blocks)
+     */
+    private String sanitizeResponse(String jsonResponse) {
+        String clean = jsonResponse.trim();
+
+        // FIX: Extract JSON part if the response contains conversational text
+        int firstBrace = clean.indexOf("{");
+        int lastBrace = clean.lastIndexOf("}");
+
+        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+            clean = clean.substring(firstBrace, lastBrace + 1);
+        }
+
+        // Remove markdown code blocks if they still exist (though substring should
+        // handle it mostly)
+        if (clean.startsWith("```json")) {
+            clean = clean.substring(7);
+        } else if (clean.startsWith("```")) {
+            clean = clean.substring(3);
+        }
+        if (clean.endsWith("```")) {
+            clean = clean.substring(0, clean.length() - 3);
+        }
+        clean = clean.trim();
+
+        // FIX: Replace backticks used as quotes with double quotes
+        // Pattern: look for `...` that contains newlines or is used as value
+        // We use a specific regex to find backticked strings and convert them to valid
+        // JSON strings
+        // Added DOTALL to support multi-line strings inside backticks
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("`([^`]*)`", java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher matcher = pattern.matcher(clean);
+
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            String content = matcher.group(1);
+            // Escape double quotes and newlines inside the content
+            String escaped = content
+                    .replace("\\", "\\\\") // Escape backslashes first
+                    .replace("\"", "\\\"") // Escape quotes
+                    .replace("\n", "\\n") // Escape newlines to literal \n
+                    .replace("\r", ""); // Remove carriage returns
+
+            // Use quoteReplacement to handle $ and \ correctly in appendReplacement
+            matcher.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement("\"" + escaped + "\""));
+        }
+        matcher.appendTail(sb);
+
+        return sb.toString();
+    }
+
+    /**
+     * Parse AI JSON response into KnowledgeAgentProposal
+     */
+    private com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal parseAgentProposal(
+            String jsonResponse,
+            Long knowledgeId,
+            String originalContent) throws Exception {
+
+        // Parse JSON
+        com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(jsonResponse);
+
+        String summary = root.has("summary") ? root.get("summary").asText() : "Mudanças propostas";
+        List<com.matheusdev.mindforge.knowledgeltem.dto.ContentChange> changes = new ArrayList<>();
+
+        if (root.has("changes") && root.get("changes").isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode changeNode : root.get("changes")) {
+                com.matheusdev.mindforge.knowledgeltem.dto.ContentChange change = new com.matheusdev.mindforge.knowledgeltem.dto.ContentChange();
+
+                change.setType(com.matheusdev.mindforge.knowledgeltem.dto.ContentChange.ChangeType.valueOf(
+                        changeNode.get("type").asText()));
+                change.setStartLine(changeNode.has("startLine") ? changeNode.get("startLine").asInt() : 0);
+                change.setEndLine(changeNode.has("endLine") ? changeNode.get("endLine").asInt() : 0);
+                change.setOriginalContent(
+                        changeNode.has("originalContent") ? changeNode.get("originalContent").asText() : "");
+                change.setProposedContent(
+                        changeNode.has("proposedContent") ? changeNode.get("proposedContent").asText() : "");
+                change.setReason(changeNode.has("reason") ? changeNode.get("reason").asText() : "");
+
+                changes.add(change);
+            }
+        }
+
+        com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal proposal = new com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal();
+        proposal.setKnowledgeId(knowledgeId);
+        proposal.setSummary(summary);
+        proposal.setChanges(changes);
+        proposal.setCreatedAt(java.time.LocalDateTime.now());
+        proposal.setOriginalContent(originalContent);
+
+        return proposal;
     }
 }

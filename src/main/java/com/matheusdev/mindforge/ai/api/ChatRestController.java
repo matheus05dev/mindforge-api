@@ -79,28 +79,33 @@ public class ChatRestController {
 
     @PostMapping("/session")
     @Operation(summary = "Cria uma nova sessão de chat", description = "Cria uma nova sessão de chat vazia. O corpo da requisição é opcional.")
-    public ResponseEntity<ChatSession> createSession(@RequestBody(required = false) Map<String, Object> request) {
+    public ResponseEntity<com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse> createSession(
+            @RequestBody(required = false) Map<String, Object> request) {
         // Se o front enviar um JSON vazio ou nulo, criamos uma sessão padrão
-        return ResponseEntity.ok(chatService.createNewSession());
+        ChatSession session = chatService.createNewSession();
+        return ResponseEntity.ok(chatService.mapToResponse(session));
     }
 
     @org.springframework.web.bind.annotation.GetMapping
     @Operation(summary = "Lista todas as sessões de chat", description = "Retorna o histórico de todas as sessões de chat, ordenadas da mais recente para a mais antiga.")
-    public ResponseEntity<java.util.List<ChatSession>> getAllSessions() {
-        return ResponseEntity.ok(chatService.getAllSessions());
+    public ResponseEntity<java.util.List<com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse>> getAllSessions() {
+        return ResponseEntity.ok(chatService.getAllSessions().stream()
+                .map(chatService::mapToResponse)
+                .collect(java.util.stream.Collectors.toList()));
     }
 
     @org.springframework.web.bind.annotation.GetMapping("/{id}")
     @Operation(summary = "Obtém uma sessão de chat específica", description = "Retorna os detalhes e mensagens de uma sessão pelo ID.")
-    public ResponseEntity<ChatSession> getSession(@org.springframework.web.bind.annotation.PathVariable Long id) {
+    public ResponseEntity<com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse> getSession(
+            @org.springframework.web.bind.annotation.PathVariable Long id) {
         return chatService.getSession(id)
-                .map(ResponseEntity::ok)
+                .map(session -> ResponseEntity.ok(chatService.mapToResponse(session)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @org.springframework.web.bind.annotation.PutMapping("/{id}")
     @Operation(summary = "Atualiza o título de uma sessão de chat", description = "Permite renomear uma sessão de chat existente.")
-    public ResponseEntity<ChatSession> updateSessionTitle(
+    public ResponseEntity<com.matheusdev.mindforge.knowledgeltem.dto.ChatSessionResponse> updateSessionTitle(
             @org.springframework.web.bind.annotation.PathVariable Long id,
             @RequestBody Map<String, String> request) {
         String newTitle = request.get("title");
@@ -109,7 +114,7 @@ public class ChatRestController {
         }
 
         return chatService.updateSessionTitle(id, newTitle)
-                .map(ResponseEntity::ok)
+                .map(session -> ResponseEntity.ok(chatService.mapToResponse(session)))
                 .orElse(ResponseEntity.notFound().build());
     }
 

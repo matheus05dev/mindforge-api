@@ -118,12 +118,16 @@ public class GroqProvider implements AIProvider {
                         ? request.temperature()
                         : 0.7; // Default seguro (era 1.0)
 
+                int effectiveMaxTokens = (request.maxTokens() != null && request.maxTokens() > 0)
+                        ? request.maxTokens()
+                        : selectedModel.getMaxTokens();
+
                 GroqRequest groqRequest = new GroqRequest(
                         selectedModel.getModelName(),
                         messages,
                         false,
                         temperature, // Usando temperatura dinâmica
-                        selectedModel.getMaxTokens(),
+                        effectiveMaxTokens,
                         1.0,
                         null,
                         selectedModel.getReasoningEffort());
