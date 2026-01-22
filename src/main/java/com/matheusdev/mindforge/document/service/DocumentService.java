@@ -69,6 +69,10 @@ public class DocumentService {
         return documentRepository.findAll();
     }
 
+    public List<Document> findByProjectId(Long projectId) {
+        return documentRepository.findByProjectId(projectId);
+    }
+
     public Document findDocumentById(Long documentId) {
         return documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Documento não encontrado com o id: " + documentId));

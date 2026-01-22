@@ -58,13 +58,15 @@ public class AIService {
     public KnowledgeItemResponse modifyKnowledgeItemContent(Long itemId, String instruction, String provider) {
         // Este método agora usa o prompt genérico, mas poderia ter um mais específico.
         PromptPair prompts = promptBuilderService.buildContentModificationPrompt(instruction, instruction);
-        // A lógica de modificação do item de conhecimento precisa ser movida para cá ou para um serviço dedicado.
+        // A lógica de modificação do item de conhecimento precisa ser movida para cá ou
+        // para um serviço dedicado.
         // Por enquanto, esta chamada está incompleta.
         return knowledgeItemAIService.modifyKnowledgeItemContent(itemId, instruction, provider);
     }
 
     @Transactional
-    public KnowledgeItemResponse transcribeImageAndAppendToKnowledgeItem(Long documentId, Long itemId, String provider) throws IOException {
+    public KnowledgeItemResponse transcribeImageAndAppendToKnowledgeItem(Long documentId, Long itemId, String provider)
+            throws IOException {
         return knowledgeItemAIService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId, provider);
     }
 
@@ -73,28 +75,33 @@ public class AIService {
         final Long userId = 1L; // Provisório
         UserProfileAI userProfile = memoryService.getProfile(userId);
 
-        Optional<Subject> subject = request.getSubjectId() != null ? subjectRepository.findById(request.getSubjectId()) : Optional.empty();
-        Optional<Project> project = request.getProjectId() != null ? projectRepository.findById(request.getProjectId()) : Optional.empty();
+        Optional<Subject> subject = request.getSubjectId() != null ? subjectRepository.findById(request.getSubjectId())
+                : Optional.empty();
+        Optional<Project> project = request.getProjectId() != null ? projectRepository.findById(request.getProjectId())
+                : Optional.empty();
 
-        PromptPair prompts = promptBuilderService.buildGenericPrompt(request.getQuestion(), userProfile, subject, project);
-        
+        PromptPair prompts = promptBuilderService.buildGenericPrompt(request.getQuestion(), userProfile, subject,
+                project);
+
         ChatSession session = chatService.getOrCreateGenericChatSession(request);
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
         try {
-            AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(), null, provider);
-            AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(providerRequest.toChatRequest(provider)).get();
+            AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(),
+                    null, provider);
+            AIProviderResponse aiResponse = aiOrchestrationService
+                    .handleChatInteraction(providerRequest.toChatRequest(provider)).get();
 
             if (aiResponse.getError() != null) {
                 throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
             }
             ChatMessage assistantMessage = chatService.saveMessage(session, "assistant", aiResponse.getContent());
-            
+
             List<Map<String, String>> chatHistory = new ArrayList<>();
             chatHistory.add(Map.of("role", "user", "content", userMessage.getContent()));
             chatHistory.add(Map.of("role", "assistant", "content", assistantMessage.getContent()));
             memoryService.updateUserProfile(userId, chatHistory);
-            
+
             return assistantMessage;
         } catch (InterruptedException | ExecutionException e) {
             Thread.currentThread().interrupt();
@@ -110,5 +117,19 @@ public class AIService {
     @Transactional
     public ChatMessage thinkAsProductManager(ProductThinkerRequest request) {
         return productService.thinkAsProductManager(request);
+    }
+
+    @Transactional
+    public ChatMessage summarize(SummarizationRequest request) {
+        try {
+            String summary = aiOrchestrationService.summarizeContent(request.getText()).get();
+            ChatMessage response = new ChatMessage();
+            response.setRole("assistant");
+            response.setContent(summary);
+            return response;
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("Erro ao gerar resumo com IA.", e);
+        }
     }
 }

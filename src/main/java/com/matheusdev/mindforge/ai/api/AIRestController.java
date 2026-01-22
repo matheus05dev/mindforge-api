@@ -48,8 +48,7 @@ public class AIRestController {
     @PostMapping("/analyze/generic")
     public ResponseEntity<ChatMessage> analyzeGeneric(
             @RequestBody @Valid GenericAnalysisRequest request,
-            @Parameter(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.")
-            @RequestParam(value = "provider", required = false) String provider) {
+            @Parameter(description = "Provedor de IA a ser usado (ex: 'ollamaProvider', 'groqProvider'). Padrão: 'ollamaProvider'.") @RequestParam(value = "provider", required = false) String provider) {
         ChatMessage responseMessage = aiService.analyzeGeneric(request, provider);
         return ResponseEntity.ok(responseMessage);
     }
@@ -59,9 +58,9 @@ public class AIRestController {
     public ResponseEntity<KnowledgeItemResponse> modifyKnowledgeItemContent(
             @PathVariable Long itemId,
             @RequestBody @Valid ContentModificationRequest request,
-            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.")
-            @RequestParam(value = "provider", required = false) String provider) {
-        KnowledgeItemResponse updatedItem = aiService.modifyKnowledgeItemContent(itemId, request.getInstruction(), provider);
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.") @RequestParam(value = "provider", required = false) String provider) {
+        KnowledgeItemResponse updatedItem = aiService.modifyKnowledgeItemContent(itemId, request.getInstruction(),
+                provider);
         return ResponseEntity.ok(updatedItem);
     }
 
@@ -70,10 +69,10 @@ public class AIRestController {
     public ResponseEntity<KnowledgeItemResponse> transcribeImageToKnowledgeItem(
             @PathVariable Long documentId,
             @PathVariable Long itemId,
-            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.")
-            @RequestParam(value = "provider", required = false) String provider) {
+            @Parameter(description = "Provedor de IA a ser usado. Padrão: 'ollamaProvider'.") @RequestParam(value = "provider", required = false) String provider) {
         try {
-            KnowledgeItemResponse updatedItem = aiService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId, provider);
+            KnowledgeItemResponse updatedItem = aiService.transcribeImageAndAppendToKnowledgeItem(documentId, itemId,
+                    provider);
             return ResponseEntity.ok(updatedItem);
         } catch (IOException e) {
             return ResponseEntity.status(500).build();
@@ -82,7 +81,8 @@ public class AIRestController {
 
     @Operation(summary = "Revisa um portfólio do GitHub", description = "Atua como um Tech Recruiter para analisar um repositório completo (README, estrutura, código) e fornecer feedback de carreira.")
     @PostMapping("/review/portfolio")
-    public ResponseEntity<ChatMessage> reviewPortfolio(@RequestBody @Valid PortfolioReviewRequest request) throws IOException {
+    public ResponseEntity<ChatMessage> reviewPortfolio(@RequestBody @Valid PortfolioReviewRequest request)
+            throws IOException {
         ChatMessage responseMessage = aiService.reviewPortfolio(request);
         return ResponseEntity.ok(responseMessage);
     }
@@ -91,6 +91,13 @@ public class AIRestController {
     @PostMapping("/think/product")
     public ResponseEntity<ChatMessage> thinkAsProductManager(@RequestBody @Valid ProductThinkerRequest request) {
         ChatMessage responseMessage = aiService.thinkAsProductManager(request);
+        return ResponseEntity.ok(responseMessage);
+    }
+
+    @Operation(summary = "Gera um resumo (TL;DR)", description = "Gera um resumo conciso e inteligente de um texto fornecido.")
+    @PostMapping("/summarize")
+    public ResponseEntity<ChatMessage> summarize(@RequestBody @Valid SummarizationRequest request) {
+        ChatMessage responseMessage = aiService.summarize(request);
         return ResponseEntity.ok(responseMessage);
     }
 }

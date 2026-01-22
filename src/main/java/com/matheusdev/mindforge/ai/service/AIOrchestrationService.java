@@ -98,6 +98,31 @@ public class AIOrchestrationService {
         return executeAndLogTask(request, selectedProvider, "internal-analysis");
     }
 
+    /**
+     * Gera um resumo "TL;DR" (Too Long; Didn't Read) inteligente para um conteúdo.
+     * Focado em entregar o valor central em poucas linhas.
+     *
+     * @param content Conteúdo a ser resumido.
+     * @return CompletableFuture com o resumo.
+     */
+    public CompletableFuture<String> summarizeContent(String content) {
+        log.info(">>> [ORCHESTRATOR] Gerando Auto-TL;DR para conteúdo de {} chars.", content.length());
+
+        String systemPrompt = "Você é um especialista em síntese de informação. Sua missão é gerar um 'TL;DR' (Too Long; Didn't Read) perfeito.\n"
+                +
+                "Regras:\n" +
+                "1. Seja extremamente conciso (máximo 3-4 frases).\n" +
+                "2. Capture a essência e o 'porquê' do documento/texto.\n" +
+                "3. Use tópicos se facilitar a leitura.\n" +
+                "4. Responda APENAS o resumo, sem introduções.";
+
+        String userPrompt = "Resuma o seguinte conteúdo:\n\n" +
+                (content.length() > 10000 ? content.substring(0, 10000) + "... (truncado)" : content);
+
+        return executeInternalAnalysis(userPrompt, systemPrompt)
+                .thenApply(AIProviderResponse::getContent);
+    }
+
     private ChatSession ensureSession(Long chatId) {
         if (chatId == null || chatId > MAX_VALID_SESSION_ID) {
             if (chatId != null) {

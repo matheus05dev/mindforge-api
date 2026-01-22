@@ -44,6 +44,16 @@ public class DocumentRestController {
         return ResponseEntity.ok(responses);
     }
 
+    @Operation(summary = "Get documents by project", description = "Retrieves documents associated with a specific project")
+    @GetMapping("/project/{projectId}")
+    public ResponseEntity<List<DocumentResponse>> getDocumentsByProject(@PathVariable Long projectId) {
+        List<Document> documents = documentService.findByProjectId(projectId);
+        List<DocumentResponse> responses = documents.stream()
+                .map(documentMapper::toResponse)
+                .collect(java.util.stream.Collectors.toList());
+        return ResponseEntity.ok(responses);
+    }
+
     @Operation(summary = "Upload a document", description = "Uploads a document and associates it with a project, kanban task, knowledge item, or study session")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successfully uploaded the document")

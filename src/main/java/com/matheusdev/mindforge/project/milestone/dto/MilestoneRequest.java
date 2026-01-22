@@ -8,15 +8,16 @@ import java.time.LocalDate;
 
 @Data
 public class MilestoneRequest {
-    // Não precisamos do workspaceId aqui, pois o milestone é adicionado a um projeto
+    // Não precisamos do workspaceId aqui, pois o milestone é adicionado a um
+    // projeto
     // que já existe e, portanto, já está em um workspace.
 
-    @NotBlank(message = "Title is required")
+    // Title is required for creation but optional for updates
     private String title;
-    
+
     private String description;
-    
+
     private LocalDate dueDate;
-    
+
     private boolean completed;
 }
