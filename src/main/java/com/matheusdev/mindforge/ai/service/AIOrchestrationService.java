@@ -279,7 +279,7 @@ public class AIOrchestrationService {
     }
 
     /**
-     * Processa a análise de arquivos enviados pelo usuário.     * 
+     * Processa a análise de arquivos enviados pelo usuário. *
      * Suporta:
      * <ul>
      * <li>Extração de texto via Tika (PDF, DOCX, etc).</li>
@@ -1312,7 +1312,9 @@ public class AIOrchestrationService {
             String originalContent) throws Exception {
 
         // Parse JSON
-        com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(jsonResponse);
+        com.fasterxml.jackson.databind.JsonNode root = objectMapper.reader()
+                .with(com.fasterxml.jackson.core.JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS)
+                .readTree(jsonResponse);
 
         String summary = root.has("summary") ? root.get("summary").asText() : "Mudanças propostas";
         List<com.matheusdev.mindforge.knowledgeltem.dto.ContentChange> changes = new ArrayList<>();
