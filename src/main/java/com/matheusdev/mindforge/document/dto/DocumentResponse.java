@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class DocumentResponse {
     private Long id;
     private String fileName;
+    private String originalFileName;
     private String fileType;
     private LocalDateTime uploadDate;
     private String downloadUri;

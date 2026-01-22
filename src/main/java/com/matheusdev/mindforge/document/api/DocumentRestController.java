@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -29,6 +30,19 @@ public class DocumentRestController {
     private final DocumentService documentService;
     private final FileStorageService fileStorageService;
     private final DocumentMapper documentMapper;
+
+    @Operation(summary = "Get all documents", description = "Retrieves all uploaded documents")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved documents")
+    })
+    @GetMapping
+    public ResponseEntity<List<DocumentResponse>> getAllDocuments() {
+        List<Document> documents = documentService.findAll();
+        List<DocumentResponse> responses = documents.stream()
+                .map(documentMapper::toResponse)
+                .collect(java.util.stream.Collectors.toList());
+        return ResponseEntity.ok(responses);
+    }
 
     @Operation(summary = "Upload a document", description = "Uploads a document and associates it with a project, kanban task, knowledge item, or study session")
     @ApiResponses(value = {
@@ -68,5 +82,37 @@ public class DocumentRestController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
                 .body(resource);
+    }
+
+    @Operation(summary = "View a document", description = "Views a document by its file name (inline)")
+    @GetMapping("/view/{fileName:.+}")
+    public ResponseEntity<Resource> viewFile(@PathVariable String fileName, HttpServletRequest request) {
+        Resource resource = fileStorageService.loadFileAsResource(fileName);
+
+        String contentType = null;
+        try {
+            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
+        } catch (IOException ex) {
+            // ignore
+        }
+
+        if (contentType == null) {
+            contentType = "application/octet-stream";
+        }
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
+                .body(resource);
+    }
+
+    @Operation(summary = "Delete a document", description = "Deletes a document by its ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Successfully deleted the document")
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteDocument(@PathVariable Long id) {
+        documentService.deleteDocument(id);
+        return ResponseEntity.noContent().build();
     }
 }

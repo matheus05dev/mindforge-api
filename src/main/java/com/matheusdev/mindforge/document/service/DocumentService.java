@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -29,11 +30,13 @@ public class DocumentService {
     private final KnowledgeItemRepository knowledgeItemRepository;
     private final StudySessionRepository studySessionRepository;
 
-    public Document storeFile(MultipartFile file, Long projectId, Long kanbanTaskId, Long knowledgeItemId, Long studySessionId) throws IOException {
+    public Document storeFile(MultipartFile file, Long projectId, Long kanbanTaskId, Long knowledgeItemId,
+            Long studySessionId) throws IOException {
         String fileName = fileStorageService.storeFile(file);
 
         Document document = new Document();
         document.setFileName(fileName);
+        document.setOriginalFileName(file.getOriginalFilename());
         document.setFileType(file.getContentType());
         document.setFilePath("/uploads/" + fileName);
         document.setUploadDate(LocalDateTime.now());
@@ -44,19 +47,26 @@ public class DocumentService {
             document.setProject(project);
         } else if (kanbanTaskId != null) {
             KanbanTask kanbanTask = kanbanTaskRepository.findById(kanbanTaskId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Tarefa do Kanban não encontrada com o id: " + kanbanTaskId));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Tarefa do Kanban não encontrada com o id: " + kanbanTaskId));
             document.setKanbanTask(kanbanTask);
         } else if (knowledgeItemId != null) {
             KnowledgeItem knowledgeItem = knowledgeItemRepository.findById(knowledgeItemId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + knowledgeItemId));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Item de conhecimento não encontrado com o id: " + knowledgeItemId));
             document.setKnowledgeItem(knowledgeItem);
         } else if (studySessionId != null) {
             StudySession studySession = studySessionRepository.findById(studySessionId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + studySessionId));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Sessão de estudo não encontrada com o id: " + studySessionId));
             document.setStudySession(studySession);
         }
 
         return documentRepository.save(document);
+    }
+
+    public List<Document> findAll() {
+        return documentRepository.findAll();
     }
 
     public Document findDocumentById(Long documentId) {
@@ -66,5 +76,19 @@ public class DocumentService {
 
     public byte[] getDocumentContent(Document document) throws IOException {
         return fileStorageService.loadFileAsBytes(document.getFileName());
+    }
+
+    public void deleteDocument(Long documentId) {
+        Document document = findDocumentById(documentId);
+
+        // Remove arquivo físico
+        try {
+            fileStorageService.deleteFile(document.getFileName());
+        } catch (Exception e) {
+            // Logar erro mas continuar deletando o registro
+            System.err.println("Erro ao deletar arquivo físico: " + e.getMessage());
+        }
+
+        documentRepository.delete(document);
     }
 }

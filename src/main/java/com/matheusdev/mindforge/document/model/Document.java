@@ -21,6 +21,7 @@ public class Document {
     private Long workspaceId; // Pode ser nulo se for um documento global
 
     private String fileName;
+    private String originalFileName;
     private String fileType;
     private String filePath;
     private LocalDateTime uploadDate;
