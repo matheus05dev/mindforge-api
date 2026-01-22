@@ -14,4 +14,6 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Long> 
     Optional<ChatSession> findByDocumentId(String documentId);
 
     Optional<ChatSession> findByKnowledgeItemId(Long knowledgeItemId);
+
+    Optional<ChatSession> findByStudyNoteId(Long studyNoteId);
 }

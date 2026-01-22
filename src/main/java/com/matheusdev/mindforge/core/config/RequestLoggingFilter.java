@@ -29,20 +29,47 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(requestWrapper, responseWrapper);
         } finally {
-            long duration = System.currentTimeMillis() - startTime;
+            if (request.isAsyncStarted()) {
+                request.getAsyncContext().addListener(new jakarta.servlet.AsyncListener() {
+                    @Override
+                    public void onComplete(jakarta.servlet.AsyncEvent asyncEvent) throws IOException {
+                        logRequestAndResponse(request, requestWrapper, responseWrapper, startTime);
+                        responseWrapper.copyBodyToResponse();
+                    }
 
-            // Log Request
-            String requestBody = new String(requestWrapper.getContentAsByteArray(), StandardCharsets.UTF_8);
-            log.info("REQUEST: method=[{}] uri=[{}] body=[{}]",
-                    request.getMethod(), request.getRequestURI(), requestBody);
+                    @Override
+                    public void onTimeout(jakarta.servlet.AsyncEvent asyncEvent) {
+                    }
 
-            // Log Response
-            String responseBody = new String(responseWrapper.getContentAsByteArray(), StandardCharsets.UTF_8);
-            log.info("RESPONSE: status=[{}] duration=[{}ms] body=[{}]",
-                    response.getStatus(), duration, responseBody);
+                    @Override
+                    public void onError(jakarta.servlet.AsyncEvent asyncEvent) {
+                    }
 
-            // Important: Copy content back to original response
-            responseWrapper.copyBodyToResponse();
+                    @Override
+                    public void onStartAsync(jakarta.servlet.AsyncEvent asyncEvent) {
+                    }
+                });
+            } else {
+                logRequestAndResponse(request, requestWrapper, responseWrapper, startTime);
+                responseWrapper.copyBodyToResponse();
+            }
         }
+    }
+
+    private void logRequestAndResponse(HttpServletRequest request,
+            ContentCachingRequestWrapper requestWrapper,
+            ContentCachingResponseWrapper responseWrapper,
+            long startTime) {
+        long duration = System.currentTimeMillis() - startTime;
+
+        // Log Request
+        String requestBody = new String(requestWrapper.getContentAsByteArray(), StandardCharsets.UTF_8);
+        log.info("REQUEST: method=[{}] uri=[{}] body=[{}]",
+                request.getMethod(), request.getRequestURI(), requestBody);
+
+        // Log Response
+        String responseBody = new String(responseWrapper.getContentAsByteArray(), StandardCharsets.UTF_8);
+        log.info("RESPONSE: status=[{}] duration=[{}ms] body=[{}]",
+                responseWrapper.getStatus(), duration, responseBody);
     }
 }

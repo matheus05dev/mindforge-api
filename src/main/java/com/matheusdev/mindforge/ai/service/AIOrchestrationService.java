@@ -66,6 +66,7 @@ public class AIOrchestrationService {
     private final PromptCacheService promptCacheService;
     private final VectorStoreService vectorStoreService;
     private final com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeItemRepository knowledgeItemRepository;
+    private final com.matheusdev.mindforge.study.note.repository.StudyNoteRepository studyNoteRepository;
     private final com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository chatSessionRepository;
     private final com.matheusdev.mindforge.knowledgeltem.service.ProposalCacheService proposalCacheService;
 
@@ -115,16 +116,13 @@ public class AIOrchestrationService {
 
     /**
      * Gerencia a interação completa de chat com o usuário.
-     * <p>
      * O fluxo inclui:
-     * <ol>
-     * <li>Verificação/Criação de sessão.</li>
-     * <li>Persistência da mensagem do usuário.</li>
-     * <li>Recuperação de contexto (RAG) se aplicável.</li>
-     * <li>Construção dinâmica de prompt (Persona, Glossário).</li>
-     * <li>Execução via provedor de IA.</li>
-     * <li>Persistência da resposta e atualização de memória assíncrona.</li>
-     * </ol>
+     * Verificação/Criação de sessão.
+     * Persistência da mensagem do usuário.
+     * Recuperação de contexto (RAG) se aplicável.
+     * Construção dinâmica de prompt (Persona, Glossário).
+     * Execução via provedor de IA.
+     * Persistência da resposta e atualização de memória assíncrona.
      *
      * @param chatRequest DTO contendo a mensagem e metadados da requisição.
      * @return CompletableFuture com a resposta estruturada.
@@ -281,13 +279,11 @@ public class AIOrchestrationService {
     /**
      * Processa a análise de arquivos enviados pelo usuário. *
      * Suporta:
-     * <ul>
-     * <li>Extração de texto via Tika (PDF, DOCX, etc).</li>
-     * <li>Análise multimodal para imagens.</li>
-     * <li>Roteamento inteligente de estratégia (One-Shot vs Map-Reduce vs
-     * RAG).</li>
-     * <li>Fallback automático de provedores baseado em tamanho e tipo.</li>
-     * </ul>
+     * Extração de texto via Tika (PDF, DOCX, etc).
+     * Análise multimodal para imagens.
+     * Roteamento inteligente de estratégia (One-Shot vs Map-Reduce vs
+     * RAG).
+     * Fallback automático de provedores baseado em tamanho e tipo.
      *
      * @param userPrompt   Prompt do usuário sobre o arquivo.
      * @param providerName Nome do provedor forçado (opcional).
@@ -1345,5 +1341,294 @@ public class AIOrchestrationService {
         proposal.setOriginalContent(originalContent);
 
         return proposal;
+    }
+
+    /**
+     * Processa requisições de assistência de Notas de Estudo (Study Note Assist).
+     * Espelha a funcionalidade do Knowledge Assist.
+     */
+    public CompletableFuture<com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse> processStudyNoteAssist(
+            com.matheusdev.mindforge.study.note.dto.StudyNoteAIRequest request) {
+        log.info(">>> [ORCHESTRATOR] Processando Study Note Assist: {}", request.getCommand());
+
+        String providerName = FALLBACK_PROVIDER;
+        AIProvider provider = getProvider(providerName);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // VERIFICAÇÃO DE MODO AGENTE
+                if (request.isAgentMode() && request.getNoteId() != null) {
+                    log.info("🤖 AGENT MODE ATIVADO para Study Note {}", request.getNoteId());
+                    return processStudyNoteAgentMode(request, provider, providerName);
+                }
+
+                String prompt;
+                String systemPrompt = "Você é um assistente de estudo inteligente integrado a um editor de notas. " +
+                        "Sua tarefa é ajudar o estudante a resumir, expandir e melhorar suas anotações de estudo.";
+
+                // INÍCIO DA LÓGICA DE PERSISTÊNCIA
+                ChatSession session = null;
+                // Notas usam ASK_AGENT ou similar para conversas? Sim.
+                boolean isAgentMode = request
+                        .getCommand() == com.matheusdev.mindforge.study.note.dto.StudyNoteAIRequest.Command.ASK_AGENT;
+
+                if (isAgentMode && request.getNoteId() != null) {
+                    // Tenta encontrar sessão existente para esta Nota
+                    Optional<ChatSession> existingSession = chatSessionRepository
+                            .findByStudyNoteId(request.getNoteId());
+
+                    if (existingSession.isPresent()) {
+                        session = existingSession.get();
+                        log.info("Sessão existente encontrada para Nota: {}", session.getId());
+                    } else {
+                        // Cria nova sessão
+                        com.matheusdev.mindforge.study.note.model.Note note = studyNoteRepository
+                                .findById(request.getNoteId())
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                        "Note não encontrada: " + request.getNoteId()));
+
+                        session = new ChatSession();
+                        session.setTitle("Chat: " + note.getTitle());
+                        session.setCreatedAt(java.time.LocalDateTime.now());
+                        session.setStudyNote(note);
+                        session = chatSessionRepository.save(session);
+                        log.info("Nova sessão de chat criada para Nota {}: {}", note.getId(), session.getId());
+                    }
+                }
+
+                switch (request.getCommand()) {
+                    case CONTINUE -> {
+                        prompt = "Continue a seguinte anotação de estudo de forma didática e coesa:\n\n"
+                                + request.getContext();
+                    }
+                    case SUMMARIZE -> {
+                        prompt = "Resuma a seguinte anotação em tópicos principais para revisão rápida:\n\n"
+                                + request.getContext();
+                    }
+                    case FIX_GRAMMAR -> {
+                        prompt = "Corrija a gramática e melhore a clareza da seguinte anotação:\n\n"
+                                + request.getContext();
+                    }
+                    case IMPROVE -> {
+                        prompt = "Melhore a explicação e o conteúdo desta anotação, tornando-a mais completa e fácil de estudar:\n\n"
+                                + request.getContext();
+                    }
+                    case CUSTOM -> {
+                        prompt = String.format("Instrução: %s\n\nTexto: %s", request.getInstruction(),
+                                request.getContext());
+                    }
+                    case ASK_AGENT -> {
+                        if (request.isUseContext()) {
+                            log.info("🕵️ Modo Agente (Study) com Contexto (RAG) - Buscando em outras notas...");
+
+                            String searchQuery = request.getInstruction();
+                            StringBuilder ragEvidence = new StringBuilder();
+
+                            try {
+                                // Recupera todas as notas para busca cruzada (simplificado, ideal seria vector
+                                // search direto)
+                                // Aqui assumimos que não temos índice vetorial de notas separado ainda,
+                                // então buscamos apenas contexto básico ou placeholder.
+                                // TODO: Implementar busca vetorial real para notas de estudo.
+                                // Por enquanto, vamos buscar outras notas da mesma matéria se possível ou
+                                // apenas placeholder.
+
+                                // Placeholder: Buscar notas da mesma matéria (se disponível no repo)
+                                // List<Note> subjectNotes = studyNoteRepository.findBySubjectId(...);
+                                // Precisaria carregar a nota atual para saber o subject.
+
+                                com.matheusdev.mindforge.study.note.model.Note currentNote = studyNoteRepository
+                                        .findById(request.getNoteId()).orElse(null);
+                                if (currentNote != null && currentNote.getSubject() != null) {
+                                    List<com.matheusdev.mindforge.study.note.model.Note> siblingNotes = studyNoteRepository
+                                            .findBySubjectId(currentNote.getSubject().getId());
+
+                                    int count = 0;
+                                    for (com.matheusdev.mindforge.study.note.model.Note sn : siblingNotes) {
+                                        if (!sn.getId().equals(currentNote.getId()) && count < 3) {
+                                            ragEvidence.append(String.format("\n**Outra Nota: %s**\n%s...\n",
+                                                    sn.getTitle(), sn.getContent().substring(0,
+                                                            Math.min(sn.getContent().length(), 200))));
+                                            count++;
+                                        }
+                                    }
+                                }
+
+                                if (ragEvidence.length() > 0) {
+                                    log.info("✅ Contexto de outras notas adicionado.");
+                                } else {
+                                    log.warn("⚠️ Sem contexto adicional relevante encontrado.");
+                                }
+
+                            } catch (Exception e) {
+                                log.error("❌ Erro ao buscar contexto de notas", e);
+                            }
+
+                            prompt = String.format(
+                                    "Você é um tutor inteligente ajudando nos estudos.\n\n" +
+                                            "**CONTEXTO DA NOTA ATUAL:**\n%s\n\n" +
+                                            "%s\n\n" +
+                                            "**PERGUNTA/COMANDO DO USUÁRIO:**\n%s\n\n" +
+                                            "Responda de forma didática.",
+                                    request.getContext(),
+                                    ragEvidence.length() == 0 ? "(Nenhum contexto extra)"
+                                            : "### CONTEXTO RELACIONADO:\n" + ragEvidence.toString(),
+                                    request.getInstruction());
+                        } else {
+                            prompt = String.format("Pergunta: %s\n\nContexto (Nota atual): %s",
+                                    request.getInstruction(), request.getContext());
+                        }
+                    }
+                    default -> throw new IllegalArgumentException("Comando desconhecido");
+                }
+
+                if (session != null) {
+                    chatService.saveMessage(session, "user", request.getInstruction() != null ? request.getInstruction()
+                            : "Comando: " + request.getCommand());
+                }
+
+                AIProviderRequest aiRequest = new AIProviderRequest(prompt, systemPrompt, null, providerName);
+                AIProviderResponse response = executeAndLogTask(aiRequest, provider,
+                        "Study Note Assist - " + request.getCommand()).get();
+
+                String resultText = response.getContent();
+
+                if (session != null) {
+                    chatService.saveMessage(session, "assistant", resultText);
+                }
+
+                return new com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse(resultText, true,
+                        "Sucesso");
+
+            } catch (Exception e) {
+                log.error("Erro no Study Note Assist", e);
+                return new com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse("", false,
+                        "Erro: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Processa requisição de Nota de Estudo em MODO AGENTE - gera propostas de diff
+     * estruturadas.
+     * Reutiliza a estrutura de KnowledgeAgentProposal.
+     */
+    private com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse processStudyNoteAgentMode(
+            com.matheusdev.mindforge.study.note.dto.StudyNoteAIRequest request,
+            AIProvider provider,
+            String providerName) {
+
+        try {
+            // 1. RECUPERAR CONTEÚDO DO BANCO
+            com.matheusdev.mindforge.study.note.model.Note note = studyNoteRepository
+                    .findById(request.getNoteId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Note não encontrada: " + request.getNoteId()));
+
+            String currentContent = note.getContent() != null ? note.getContent() : "";
+            log.info("📄 Conteúdo recuperado da Nota {}: {} caracteres", note.getId(), currentContent.length());
+
+            // 2. CONSTRUIR PROMPT PARA GERAÇÃO DE DIFF (Adaptado para contexto de estudo)
+            String systemPrompt = """
+                    Você é um especialista em educação e edição de material didático.
+                    Sua tarefa é analisar a anotação do estudante e propor melhorias estruturais, correções ou expansões de conteúdo.
+
+                    **DIRETRIZES DE PROPOSICIONAMENTO (CONTEXT-AWARE):**
+                    1. **Clareza e Didática**: Melhore explicações confusas, adicione exemplos onde faltar.
+                    2. **Inserção Contextual**: Se adicionar conteúdo, coloque-o na seção logicamente correta. Se for um tópico novo, crie uma seção no final ou onde fizer sentido semanticamente.
+                    3. **Granularidade**: Mantenha o estilo de anotação (tópicos, negrito, emojis se já usados).
+
+                    **FORMATO DE RESPOSTA:**
+                    Retorne APENAS um JSON válido seguindo estritamente este formato.
+                    IMPORTANTE: Para strings multilinha, utilize "\\n" explícito. NÃO utilize backticks (`) para envolver strings.
+                    Use aspas duplas para todas as chaves e valores string.
+
+                    Formato JSON esperado:
+                    {
+                      "summary": "Resumo curto do que foi alterado e porquê",
+                      "changes": [
+                        {
+                          "type": "ADD", // UM DE: 'ADD', 'REMOVE', 'REPLACE'
+                          "startLine": número_da_linha_inicial,
+                          "endLine": número_da_linha_final,
+                          "originalContent": "conteúdo original (vazio para ADD)",
+                          "proposedContent": "novo conteúdo (vazio para REMOVE) - ESCAPE QUEBRAS DE LINHA COM \\n",
+                          "reason": "Justificativa didática"
+                        }
+                      ]
+                    }
+                    """;
+
+            String userPrompt = String.format("""
+                    CONTEÚDO ATUAL DA NOTA:
+                    ```
+                    %s
+                    ```
+
+                    INSTRUÇÃO DO ESTUDANTE:
+                    %s
+
+                    Gere as mudanças necessárias em formato JSON.
+                    """, currentContent, request.getInstruction());
+
+            // 3. CHAMADA DE IA PARA GERAR DIFF
+            AIProviderRequest aiRequest = new AIProviderRequest(
+                    userPrompt,
+                    systemPrompt,
+                    null,
+                    providerName,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0.3, // Temperatura baixa para output estruturado
+                    4096 // Limite maior
+            );
+
+            AIProviderResponse aiResponse = executeAndLogTask(aiRequest, provider, "Geração de Diff (Study Agent)")
+                    .get();
+            String jsonResponse = aiResponse.getContent();
+
+            log.info("🤖 Study Agent Response: {}", jsonResponse);
+
+            // 4. PARSE DA RESPOSTA JSON
+            String cleanJson = sanitizeResponse(jsonResponse);
+
+            // Reutiliza o parser de KnowledgeAgentProposal, pois a estrutura JSON é
+            // idêntica
+            // Precisamos apenas adaptar o ID (knowledgeId vs noteId) no objeto retornado
+            // Usamos um ID fictício ou adaptamos o método de parse
+
+            com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeAgentProposal proposal = parseAgentProposal(
+                    cleanJson,
+                    0L, // KnowledgeId ignorado aqui
+                    currentContent);
+
+            // Ajuste manual: setar o campo transient ou apenas usar o DTO genérico
+            // O DTO KnowledgeAgentProposal tem knowledgeId, mas podemos ignorar ou usar
+            // noteId se o front souber lidar
+            proposal.setKnowledgeId(request.getNoteId()); // Reutilizando campo ID para ID da nota
+
+            // 5. ARMAZENAR PROPOSTA EM CACHE
+            // Usamos o mesmo cache service? Sim, se ele usar String ID ou similar.
+            // O cache service usa UUID na memória, então ok.
+            String proposalId = proposalCacheService.storeProposal(proposal);
+            log.info("✅ Proposta {} armazenada para a Nota {}", proposalId, request.getNoteId());
+
+            // 6. RETORNAR PROPOSTA AO FRONTEND
+            com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse response = new com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse(
+                    null, true, "Proposta gerada com sucesso");
+            response.setProposal(proposal);
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("❌ Erro no Study Agent Mode", e);
+            return new com.matheusdev.mindforge.study.note.dto.StudyNoteAIResponse(
+                    "",
+                    false,
+                    "Erro ao gerar proposta: " + e.getMessage());
+        }
     }
 }

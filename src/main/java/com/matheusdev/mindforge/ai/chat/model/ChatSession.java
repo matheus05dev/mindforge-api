@@ -38,4 +38,8 @@ public class ChatSession {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "knowledge_item_id")
     private com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem knowledgeItem;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "study_note_id")
+    private com.matheusdev.mindforge.study.note.model.Note studyNote;
 }
