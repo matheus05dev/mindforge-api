@@ -11,6 +11,8 @@ import com.matheusdev.mindforge.ai.provider.AIProvider;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderRequest;
 import com.matheusdev.mindforge.ai.provider.dto.AIProviderResponse;
 import com.matheusdev.mindforge.ai.service.model.Answer;
+import com.matheusdev.mindforge.study.roadmap.dto.GeneratedRoadmapDTO;
+import com.matheusdev.mindforge.study.roadmap.dto.RoadmapDTOs;
 import com.matheusdev.mindforge.ai.service.model.AuditedAnswer;
 import com.matheusdev.mindforge.ai.service.model.Evidence;
 import com.matheusdev.mindforge.ai.service.model.EvidenceRef;
@@ -61,6 +63,7 @@ public class AIOrchestrationService {
     private final ChatService chatService;
     private final SmartRouterService smartRouterService;
     private final RAGService ragService;
+    private final WebSearchService webSearchService;
     private final DocumentAnalyzer documentAnalyzer;
     private final ObjectMapper objectMapper;
     private final PromptCacheService promptCacheService;
@@ -72,6 +75,8 @@ public class AIOrchestrationService {
 
     // JSON Parser
     private final com.fasterxml.jackson.core.type.TypeReference<List<com.matheusdev.mindforge.study.quiz.dto.QuizQuestionRequest>> quizListTypeRef = new com.fasterxml.jackson.core.type.TypeReference<>() {
+    };
+    private final com.fasterxml.jackson.core.type.TypeReference<GeneratedRoadmapDTO> roadmapTypeRef = new com.fasterxml.jackson.core.type.TypeReference<>() {
     };
 
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
@@ -545,6 +550,151 @@ public class AIOrchestrationService {
                 return Collections.emptyList();
             }
         });
+    }
+
+    /**
+     * Gera um Roadmap de estudos completo com recursos da web.
+     */
+    public CompletableFuture<RoadmapDTOs.RoadmapResponse> generateRoadmap(String topic, String duration,
+            String difficulty) {
+        log.info(">>> [ORCHESTRATOR] Gerando Roadmap: Tópico={}, Duração={}, Dificuldade={}", topic, duration,
+                difficulty);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // 1. Gerar Estrutura do Roadmap
+                String systemPrompt = "Você é um mentor especialista em planejamento de carreira e estudos.";
+                String jsonStructure = """
+                        {
+                          "title": "Título do Roadmap",
+                          "description": "Descrição inspiradora",
+                          "items": [
+                            {
+                              "title": "Semana 1: Fundamentos",
+                              "description": "O que será aprendido...",
+                              "searchQuery": "query otimizada para buscar recursos para este tópico específico (ex: 'java basics tutorial site:oracle.com')"
+                            }
+                          ]
+                        }""";
+
+                String userPrompt = String.format(
+                        """
+                                Crie um plano de estudos detalhado de %s para aprender "%s".
+                                Nível: %s.
+
+                                FOCO: Recursos gratuitos de alta qualidade (Cisco NetAcad, Khan Academy, Documentação Oficial, YouTube Edu).
+
+                                Regras:
+                                1. Retorne APENAS um JSON válido seguindo estritamente essa estrutura:
+                                %s
+                                2. O campo 'searchQuery' é CRITICO. Crie uma query de busca específica para encontrar cursos/artigos gratuitos sobre o tema daquela semana/módulo.
+                                3. Não inclua markdown.
+                                """,
+                        duration, topic, difficulty, jsonStructure);
+
+                AIProviderRequest request = new AIProviderRequest(
+                        userPrompt,
+                        systemPrompt,
+                        null,
+                        FALLBACK_PROVIDER,
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.7,
+                        4096 // Increased max tokens for large roadmap JSON
+                );
+                // cloud
+                // for
+                // better
+                // reasoning
+                AIProviderResponse response = executeAndLogTask(request, getProvider(FALLBACK_PROVIDER),
+                        "generate-roadmap-structure").get();
+
+                String content = cleanJson(response.getContent());
+                GeneratedRoadmapDTO rawRoadmap = objectMapper.readValue(content, roadmapTypeRef);
+
+                // 2. Enriquecer com Recursos Reais (Web Search)
+                List<RoadmapDTOs.RoadmapItemResponse> finalItems = new ArrayList<>();
+                int index = 1;
+
+                for (GeneratedRoadmapDTO.GeneratedItemDTO item : rawRoadmap.getItems()) {
+                    List<RoadmapDTOs.ResourceLink> resources = new ArrayList<>();
+
+                    if (item.getSearchQuery() != null && !item.getSearchQuery().isBlank()) {
+                        try {
+                            // Adicionar sites confiáveis à query se não estiverem explícitos
+                            String enrichedQuery = item.getSearchQuery()
+                                    + " (course OR tutorial OR documentation) -paid -udemy";
+                            List<String> searchResults = webSearchService.search(enrichedQuery);
+
+                            // Parser simples dos resultados (assumindo formato do WebSearchService: "Title:
+                            // ... url: ...")
+                            // O WebSearchService retorna strings formatadas. Vamos tentar extrair links.
+                            // Idealmente o WebSearchService deveria retornar objetos, mas para manter
+                            // compatibilidade:
+                            for (String res : searchResults) {
+                                // Simple Title/URL extraction logic would go here.
+                                // For now, let's just create a generic link since parse is hard on raw string
+                                // Or better: Update WebSearchService later to return DTOs.
+                                // For now, let's wrap the raw string safely.
+
+                                // Quick hack parsing:
+                                String title = "Recurso Sugerido";
+                                String url = "#";
+
+                                String[] lines = res.split("\n");
+                                for (String line : lines) {
+                                    if (line.startsWith("Title: "))
+                                        title = line.substring(7);
+                                    if (line.startsWith("URL: "))
+                                        url = line.substring(5);
+                                }
+
+                                if (!url.equals("#")) {
+                                    resources.add(new RoadmapDTOs.ResourceLink(title, url, "Link"));
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("Falha na busca para item {}: {}", item.getTitle(), e.getMessage());
+                        }
+                    }
+
+                    finalItems.add(RoadmapDTOs.RoadmapItemResponse.builder()
+                            .id((long) index) // Temp ID
+                            .orderIndex(index++)
+                            .title(item.getTitle())
+                            .description(item.getDescription())
+                            .resources(resources.stream().limit(3).collect(Collectors.toList())) // Limit 3 resources
+                            .build());
+                }
+
+                return RoadmapDTOs.RoadmapResponse.builder()
+                        .title(rawRoadmap.getTitle())
+                        .description(rawRoadmap.getDescription())
+                        .targetAudience(difficulty)
+                        .items(finalItems)
+                        .build();
+
+            } catch (Exception e) {
+                log.error("Erro fatal gerando roadmap: {}", e.getMessage(), e);
+                throw new RuntimeException("Falha ao gerar roadmap IA", e);
+            }
+        });
+    }
+
+    private String cleanJson(String content) {
+        if (content.contains("```json")) {
+            content = content.substring(content.indexOf("```json") + 7);
+            if (content.contains("```"))
+                content = content.substring(0, content.indexOf("```"));
+        } else if (content.contains("```")) {
+            content = content.substring(content.indexOf("```") + 3);
+            if (content.contains("```"))
+                content = content.substring(0, content.indexOf("```"));
+        }
+        return content.trim();
     }
 
     /**
