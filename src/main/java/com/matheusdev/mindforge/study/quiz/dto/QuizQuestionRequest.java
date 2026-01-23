@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class QuizQuestionRequest {
     private String question;
-    private String options; // JSON: ["A", "B", "C", "D"]
+    private java.util.List<String> options; // JSON Array
     private Integer correctAnswer;
     private String explanation;
 }

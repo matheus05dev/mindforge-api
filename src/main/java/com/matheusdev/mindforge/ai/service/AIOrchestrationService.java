@@ -70,6 +70,10 @@ public class AIOrchestrationService {
     private final com.matheusdev.mindforge.ai.chat.repository.ChatSessionRepository chatSessionRepository;
     private final com.matheusdev.mindforge.knowledgeltem.service.ProposalCacheService proposalCacheService;
 
+    // JSON Parser
+    private final com.fasterxml.jackson.core.type.TypeReference<List<com.matheusdev.mindforge.study.quiz.dto.QuizQuestionRequest>> quizListTypeRef = new com.fasterxml.jackson.core.type.TypeReference<>() {
+    };
+
     private static final String DEFAULT_PROVIDER = "ollamaProvider";
     private static final String FALLBACK_PROVIDER = "groqProvider";
     private static final int OLLAMA_CHAR_LIMIT = 5000;
@@ -442,6 +446,105 @@ public class AIOrchestrationService {
 
             };
         }
+    }
+
+    /**
+     * Gera uma lista de questões de quiz baseada em um contexto fornecido.
+     *
+     * @param context    Conteúdo base (notas, web search, etc).
+     * @param topic      Tópico específico (opcional).
+     * @param difficulty Dificuldade (EASY, MEDIUM, HARD).
+     * @param count      Número de questões.
+     * @return Lista de questões geradas.
+     */
+    public CompletableFuture<List<com.matheusdev.mindforge.study.quiz.dto.QuizQuestionRequest>> generateQuizQuestions(
+            String context, String topic, String difficulty, int count) {
+
+        log.info(">>> [ORCHESTRATOR] Gerando Quiz: {} questões, Dif: {}, Tópico: {}", count, difficulty, topic);
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String systemPrompt = "Você é um professor expert criando um exame.";
+
+                String jsonStructure = """
+                        [
+                          {
+                            "question": "Texto da pergunta",
+                            "options": ["Opção A", "Opção B", "Opção C", "Opção D"],
+                            "correctAnswer": 0, // Índice da resposta correta (0-3)
+                            "explanation": "Explicação detalhada do porquê está correto"
+                          }
+                        ]""";
+
+                String userPrompt = String.format(
+                        """
+                                Crie um quiz com %d questões de múltipla escolha sobre o tópico: "%s".
+                                Nível de Dificuldade: %s.
+
+                                Use o seguinte contexto como base para as perguntas (mas pode trazer conhecimentos gerais se necessário):
+                                --- CONTEXTO ---
+                                %s
+                                --- FIM CONTEXTO ---
+
+                                Regras:
+                                1. Retorne APENAS um JSON válido seguindo estritamente essa estrutura:
+                                %s
+                                2. O campo 'options' deve ser um ARRAY JSON regular (ex: ["A", "B"]).
+                                3. Não inclua markdown (```json), apenas o JSON puro.
+                                4. Certifique-se de que a resposta correta esteja correta e a explicação seja didática.
+                                """,
+                        count, topic != null ? topic : "Geral", difficulty, context, jsonStructure);
+
+                // Forçar uso do modelo mais inteligente para garantir JSON correto
+                String providerName = FALLBACK_PROVIDER; // Groq/Cloud usually better for strict JSON instruction
+                                                         // following
+                AIProvider provider = getProvider(providerName);
+
+                AIProviderRequest request = new AIProviderRequest(
+                        userPrompt,
+                        systemPrompt,
+                        null,
+                        providerName,
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.7, // temperature
+                        4096 // maxTokens increased for large JSON
+                );
+
+                AIProviderResponse response = executeAndLogTask(request, provider, "generate-quiz").get();
+                String content = response.getContent();
+
+                // Robust cleanup: Extract JSON array from [ to ]
+                int startIndex = content.indexOf("[");
+                int endIndex = content.lastIndexOf("]");
+
+                if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                    content = content.substring(startIndex, endIndex + 1);
+                } else {
+                    // Fallback for markdown stripping if brackets aren't found cleanly
+                    if (content.startsWith("```json")) {
+                        content = content.substring(7);
+                    }
+                    if (content.startsWith("```")) {
+                        content = content.substring(3);
+                    }
+                    if (content.endsWith("```")) {
+                        content = content.substring(0, content.length() - 3);
+                    }
+                }
+
+                return objectMapper.readValue(content.trim(), quizListTypeRef);
+
+            } catch (Exception e) {
+                log.error("Erro ao gerar quiz: {}", e.getMessage(), e);
+                // Retornar lista vazia ou lançar erro customizado. Aqui retornamos vazio para
+                // não quebrar fluxo total
+                return Collections.emptyList();
+            }
+        });
     }
 
     /**

@@ -36,6 +36,26 @@ public class StudyQuizRestController {
                 .body(quizService.createQuiz(subjectId, request));
     }
 
+    /**
+     * DTO for generation request
+     */
+    @lombok.Data
+    static class GenerateQuizRequest {
+        @jakarta.validation.constraints.NotNull
+        private String topic;
+        private String difficulty = "MEDIUM";
+        private int count = 5;
+    }
+
+    @PostMapping("/subjects/{subjectId}/quizzes/generate")
+    public ResponseEntity<QuizResponse> generateQuiz(
+            @PathVariable Long subjectId,
+            @RequestBody GenerateQuizRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(quizService.generateQuiz(subjectId, request.getTopic(), request.getDifficulty(),
+                        request.getCount()));
+    }
+
     @DeleteMapping("/quizzes/{quizId}")
     public ResponseEntity<Void> deleteQuiz(@PathVariable Long quizId) {
         quizService.deleteQuiz(quizId);

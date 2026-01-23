@@ -24,7 +24,8 @@ public interface QuizMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "quiz", ignore = true)
-    QuizQuestion toEntity(QuizQuestionRequest request);
+    @Mapping(target = "options", expression = "java(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request.getOptions()))")
+    QuizQuestion toEntity(QuizQuestionRequest request) throws com.fasterxml.jackson.core.JsonProcessingException;
 
     QuizQuestionResponse toResponse(QuizQuestion question);
 }
