@@ -16,8 +16,14 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     List<Project> findByWorkspaceId(Long workspaceId);
 
-    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN FETCH p.milestones LEFT JOIN FETCH p.documents WHERE p.workspace.id = :workspaceId")
-    List<Project> findAllByWorkspaceIdWithDetails(@Param("workspaceId") Long workspaceId);
+    // Optimized: Using EntityGraph to avoid cartesian product from multiple LEFT
+    // JOIN FETCH
+    // Fetch milestones and documents in separate queries to prevent multiplication
+    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN FETCH p.milestones WHERE p.workspace.id = :workspaceId")
+    List<Project> findAllByWorkspaceIdWithMilestones(@Param("workspaceId") Long workspaceId);
+
+    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN FETCH p.documents WHERE p.workspace.id = :workspaceId")
+    List<Project> findAllByWorkspaceIdWithDocuments(@Param("workspaceId") Long workspaceId);
 
     Optional<Project> findByIdAndWorkspaceId(Long projectId, Long workspaceId);
 

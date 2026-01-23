@@ -29,12 +29,14 @@ public class StudyNoteService {
     private final com.matheusdev.mindforge.ai.service.AIOrchestrationService aiOrchestrationService;
     private final StudyNoteVersionRepository versionRepository;
 
+    @Transactional(readOnly = true)
     public List<NoteResponse> getNotesBySubject(Long subjectId) {
         return noteRepository.findBySubjectIdOrderByUpdatedAtDesc(subjectId).stream()
                 .map(mapper::toResponse)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public NoteResponse getNoteById(Long noteId) {
         Note note = noteRepository.findById(noteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Nota não encontrada com o id: " + noteId));

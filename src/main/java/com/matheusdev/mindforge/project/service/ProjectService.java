@@ -30,6 +30,7 @@ public class ProjectService {
     private final WorkspaceService workspaceService;
     private final ProjectMapper mapper;
 
+    @Transactional(readOnly = true)
     public List<ProjectResponse> getAllProjects() {
         // Este método agora é ambíguo. Para um sistema multi-workspace,
         // deveríamos sempre listar projetos DENTRO de um workspace.
@@ -39,16 +40,24 @@ public class ProjectService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<ProjectResponse> getProjectsByWorkspaceId(Long workspaceId) {
         // Garante que o workspace existe antes de buscar os projetos
         workspaceService.findById(workspaceId);
 
-        List<Project> projects = projectRepository.findAllByWorkspaceIdWithDetails(workspaceId);
-        return projects.stream()
+        // Optimized: Fetch in two separate queries to avoid cartesian product
+        // First fetch projects with milestones
+        List<Project> projectsWithMilestones = projectRepository.findAllByWorkspaceIdWithMilestones(workspaceId);
+        // Then fetch projects with documents (Hibernate will merge into existing
+        // entities)
+        projectRepository.findAllByWorkspaceIdWithDocuments(workspaceId);
+
+        return projectsWithMilestones.stream()
                 .map(mapper::toResponse)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public ProjectResponse getProjectById(Long projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
@@ -73,15 +82,15 @@ public class ProjectService {
     public ProjectResponse updateProject(Long projectId, ProjectRequest request) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
-        
+
         if (request.getWorkspaceId() != null && !request.getWorkspaceId().equals(project.getWorkspace().getId())) {
-             Workspace newWorkspace = workspaceService.findById(request.getWorkspaceId());
-             if (newWorkspace.getType() != WorkspaceType.PROJECT && newWorkspace.getType() != WorkspaceType.GENERIC) {
+            Workspace newWorkspace = workspaceService.findById(request.getWorkspaceId());
+            if (newWorkspace.getType() != WorkspaceType.PROJECT && newWorkspace.getType() != WorkspaceType.GENERIC) {
                 throw new BusinessException("Projetos não podem ser movidos para workspaces deste tipo.");
-             }
-             project.setWorkspace(newWorkspace);
+            }
+            project.setWorkspace(newWorkspace);
         }
-        
+
         mapper.updateProjectFromRequest(request, project);
         Project updatedProject = projectRepository.save(project);
         return mapper.toResponse(updatedProject);
@@ -108,7 +117,7 @@ public class ProjectService {
     public MilestoneResponse addMilestone(Long projectId, MilestoneRequest request) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
-        
+
         Milestone milestone = mapper.toEntity(request);
         milestone.setProject(project);
         Milestone savedMilestone = milestoneRepository.save(milestone);
@@ -118,8 +127,9 @@ public class ProjectService {
     @Transactional
     public MilestoneResponse updateMilestone(Long milestoneId, MilestoneRequest request) {
         Milestone milestone = milestoneRepository.findById(milestoneId)
-                .orElseThrow(() -> new ResourceNotFoundException("Marco (milestone) não encontrado com o id: " + milestoneId));
-        
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Marco (milestone) não encontrado com o id: " + milestoneId));
+
         mapper.updateMilestoneFromRequest(request, milestone);
         Milestone updatedMilestone = milestoneRepository.save(milestone);
         return mapper.toResponse(updatedMilestone);
@@ -133,18 +143,21 @@ public class ProjectService {
         milestoneRepository.deleteById(milestoneId);
     }
 
+    @Transactional(readOnly = true)
     public List<MilestoneResponse> getMilestonesByProject(Long projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + projectId));
-        
+
         return milestoneRepository.findByProjectId(projectId).stream()
                 .map(mapper::toResponse)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public MilestoneResponse getMilestoneById(Long milestoneId) {
         Milestone milestone = milestoneRepository.findById(milestoneId)
-                .orElseThrow(() -> new ResourceNotFoundException("Marco (milestone) não encontrado com o id: " + milestoneId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Marco (milestone) não encontrado com o id: " + milestoneId));
         return mapper.toResponse(milestone);
     }
 }

@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class    RAGService {
+public class RAGService {
 
     private final VectorStoreService vectorStoreService;
     private final DocumentAnalyzer documentAnalyzer;
@@ -30,7 +30,13 @@ public class    RAGService {
         log.info("🚀 Iniciando RAG ADAPTATIVO para '{}' com query: '{}' (Cache MISS)", documentId, query);
 
         // Indexar documento (ou reutilizar se já indexado)
-        vectorStoreService.getOrCreateVectorStore(documentId, document);
+        // IMPORTANT: document pode ser null se o vector store já existe
+        if (document != null) {
+            vectorStoreService.getOrCreateVectorStore(documentId, document);
+        } else if (!vectorStoreService.isDocumentIndexed(documentId)) {
+            log.error("❌ Documento '{}' não está indexado e nenhum Document foi fornecido!", documentId);
+            return List.of(); // Retorna lista vazia em vez de lançar exceção
+        }
 
         // Analisar documento para ajustar estratégia de busca
         // Se document é null (vector store já existe), usa profile em cache

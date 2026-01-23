@@ -1,7 +1,11 @@
 package com.matheusdev.mindforge.ai.provider.dto;
 
 import com.matheusdev.mindforge.ai.dto.ChatRequest;
+import lombok.Builder;
+import lombok.With;
 
+@Builder
+@With
 public record AIProviderRequest(
         String textPrompt,
         String systemMessage,
@@ -14,6 +18,7 @@ public record AIProviderRequest(
         String documentMimeType,
         Double temperature,
         Integer maxTokens) {
+
     // Construtor para requisições de texto simples
     public AIProviderRequest(String textPrompt) {
         this(textPrompt, null, null, null, false, null, null, null, null, null, null);
