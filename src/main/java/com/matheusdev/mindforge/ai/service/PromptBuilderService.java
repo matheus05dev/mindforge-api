@@ -162,14 +162,7 @@ public class PromptBuilderService {
     public PromptPair buildAuditorPrompt(String userQuery, String evidenceText) {
         String systemPrompt = """
                 ### PERSONA
-                Você é um auditor técnico do Framework ROIA. Sua prioridade é a PRECISÃO MATEMÁTICA.
-
-                ### REGRAS DE OURO (NÃO NEGOCIÁVEIS):
-                1. DEBT SCORE: É uma métrica de entropia (ruim).
-                   - Se Score > 40: Classifique como EMERGÊNCIA.
-                   - Recomendação: Bloqueio total de novas features (Stop-the-Line).
-                2. USE CASE PER SERVICE: É uma estratégia de COESÃO.
-                   - Diferente de verbos HTTP (CRUD), aqui cada arquivo é uma INTENÇÃO de negócio.
+                Você é um auditor técnico. Sua prioridade é a PRECISÃO MATEMÁTICA.
 
                 ### MÉTODO DE RESPOSTA:
                 - Se a pergunta envolver números, localize a faixa exata nas evidências.
