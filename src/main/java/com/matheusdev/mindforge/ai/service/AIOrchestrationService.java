@@ -248,6 +248,7 @@ public class AIOrchestrationService {
                     providerName);
 
             return executeAndLogTask(request, selectedProvider, "chat interaction")
+                    .thenCompose(response -> runQualityGate(response, userPrompt))
                     .thenCompose(response -> saveResponseAndUpdateProfile(
                             response,
                             session,
@@ -606,10 +607,18 @@ public class AIOrchestrationService {
                 // for
                 // better
                 // reasoning
-                AIProviderResponse response = executeAndLogTask(request, getProvider(FALLBACK_PROVIDER),
+                AIProviderResponse initialResponse = executeAndLogTask(request, getProvider(FALLBACK_PROVIDER),
                         "generate-roadmap-structure").get();
 
-                String content = cleanJson(response.getContent());
+                // --- QUALITY GATE CHECK ---
+                // Verifica se a estrutura JSON está válida, se os searchQueries fazem sentido,
+                // etc.
+                AIProviderResponse gatedResponse = runQualityGate(initialResponse, userPrompt).join(); // .join() pois
+                                                                                                       // estamos dentro
+                                                                                                       // de um
+                                                                                                       // supplyAsync
+
+                String content = cleanJson(gatedResponse.getContent());
                 GeneratedRoadmapDTO rawRoadmap = objectMapper.readValue(content, roadmapTypeRef);
 
                 // 2. Enriquecer com Recursos Reais (Web Search)
@@ -618,6 +627,7 @@ public class AIOrchestrationService {
 
                 for (GeneratedRoadmapDTO.GeneratedItemDTO item : rawRoadmap.getItems()) {
                     List<RoadmapDTOs.ResourceLink> resources = new ArrayList<>();
+                    String descriptionToUse = item.getDescription();
 
                     if (item.getSearchQuery() != null && !item.getSearchQuery().isBlank()) {
                         try {
@@ -626,30 +636,31 @@ public class AIOrchestrationService {
                                     + " (course OR tutorial OR documentation) -paid -udemy";
                             List<String> searchResults = webSearchService.search(enrichedQuery);
 
-                            // Parser simples dos resultados (assumindo formato do WebSearchService: "Title:
-                            // ... url: ...")
-                            // O WebSearchService retorna strings formatadas. Vamos tentar extrair links.
-                            // Idealmente o WebSearchService deveria retornar objetos, mas para manter
-                            // compatibilidade:
-                            for (String res : searchResults) {
-                                // Simple Title/URL extraction logic would go here.
-                                // For now, let's just create a generic link since parse is hard on raw string
-                                // Or better: Update WebSearchService later to return DTOs.
-                                // For now, let's wrap the raw string safely.
+                            // FALLBACK SEARCH: Se a busca específica não retornar nada, tenta uma busca
+                            // mais ampla
+                            if (searchResults.isEmpty()) {
+                                log.info("⚠️ Busca específica vazia para '{}'. Tentando busca ampla...",
+                                        item.getTitle());
+                                String broadQuery = item.getSearchQuery() + " tutorial free";
+                                searchResults = webSearchService.search(broadQuery);
+                            }
 
-                                // Quick hack parsing:
+                            for (String res : searchResults) {
                                 String title = "Recurso Sugerido";
                                 String url = "#";
 
-                                String[] lines = res.split("\n");
+                                // Robust Parsing: Procura por linhas explicitas retornadas pelo
+                                // WebSearchService
+                                // Formato esperado: Title: ... \nURL: ... \nSnippet: ...
+                                String[] lines = res.split("\\n");
                                 for (String line : lines) {
                                     if (line.startsWith("Title: "))
-                                        title = line.substring(7);
-                                    if (line.startsWith("URL: "))
-                                        url = line.substring(5);
+                                        title = line.substring(7).trim();
+                                    else if (line.startsWith("URL: "))
+                                        url = line.substring(5).trim();
                                 }
 
-                                if (!url.equals("#")) {
+                                if (!url.equals("#") && !url.isBlank()) {
                                     resources.add(new RoadmapDTOs.ResourceLink(title, url, "Link"));
                                 }
                             }
@@ -658,11 +669,70 @@ public class AIOrchestrationService {
                         }
                     }
 
+                    // --- LAST RESORT FALLBACK ---
+                    // Se após todas as tentativas a lista de recursos ainda estiver vazia,
+                    // geramos um "Guia de Emergência" com IA e um link de busca manual.
+                    if (resources.isEmpty()) {
+                        log.info(
+                                "⚠️ Nenhum recurso encontrado para '{}'. Iniciando FALLBACK DE EMERGÊNCIA (IA + Google)...",
+                                item.getTitle());
+
+                        try {
+                            // 1. Link Garantido: Busca no Google
+                            String googleQuery = java.net.URLEncoder.encode(item.getTitle() + " tutorial",
+                                    java.nio.charset.StandardCharsets.UTF_8);
+                            resources.add(new RoadmapDTOs.ResourceLink("Pesquisar no Google (Sugerido)",
+                                    "https://www.google.com/search?q=" + googleQuery, "Link"));
+
+                            // 2. Conteúdo Gerado: Mini-Guia explicativo
+                            String guidePrompt = String.format(
+                                    "Você é um tutor experiente. O usuário está estudando '%s'. " +
+                                            "Não encontramos links diretos. Gere um 'Mini-Guia Rápido' de 3 passos práticos ou conceitos chave para ele estudar este tópico agora. "
+                                            +
+                                            "Seja direto, prático e breve (max 3 bullets). Sem markdown complexo (apenas texto simples). "
+                                            +
+                                            "Foco: %s",
+                                    item.getTitle(), item.getDescription());
+
+                            AIProviderRequest guideRequest = new AIProviderRequest(
+                                    guidePrompt,
+                                    "Você é um assistente educacional direto e útil.",
+                                    null,
+                                    // Usar FALLBACK_PROVIDER (Groq) pela velocidade, ou o provider padrão se
+                                    // preferir.
+                                    // Como estamos dentro do CompletableFuture, get() é aceitável mas idealmente
+                                    // seria async.
+                                    // Contudo, para simplificar o loop síncrono aqui, usaremos .get() rápido do
+                                    // Groq.
+                                    getProvider(FALLBACK_PROVIDER).getClass().getSimpleName());
+
+                            // Nota: getProvider(FALLBACK_PROVIDER) pode retornar null dependendo da
+                            // implementação,
+                            // mas assumimos que está configurado como 'groq'.
+                            AIProvider fallbackProvider = getProvider(FALLBACK_PROVIDER);
+                            if (fallbackProvider != null) {
+                                AIProviderResponse guideResponse = fallbackProvider.executeTask(guideRequest).get(); // Bloqueante
+                                                                                                                     // leve
+                                                                                                                     // pois
+                                                                                                                     // Groq
+                                                                                                                     // é
+                                                                                                                     // rápido
+
+                                String guideText = guideResponse.getContent();
+                                descriptionToUse = descriptionToUse + "\n\n💡 **Guia Rápido (IA):**\n" + guideText;
+                            }
+
+                        } catch (Exception e) {
+                            log.error("Falha no Fallback de Emergência para item {}: {}", item.getTitle(),
+                                    e.getMessage());
+                        }
+                    }
+
                     finalItems.add(RoadmapDTOs.RoadmapItemResponse.builder()
                             .id((long) index) // Temp ID
                             .orderIndex(index++)
                             .title(item.getTitle())
-                            .description(item.getDescription())
+                            .description(descriptionToUse)
                             .resources(resources.stream().limit(3).collect(Collectors.toList())) // Limit 3 resources
                             .build());
                 }
@@ -1907,5 +1977,104 @@ public class AIOrchestrationService {
                     false,
                     "Erro ao gerar proposta: " + e.getMessage());
         }
+    }
+
+    /**
+     * Quality Gate: Avalia e refina a resposta da IA antes de entregar ao usuário.
+     * Implementa o padrão "Auto-Critique" para garantir escopo, formato e reduzir
+     * alucinações.
+     */
+    private CompletableFuture<AIProviderResponse> runQualityGate(AIProviderResponse initialResponse,
+            String userPrompt) {
+        // Evitar overhead em respostas muito curtas ou vazias
+        if (initialResponse.getContent() == null || initialResponse.getContent().length() < 10) {
+            return CompletableFuture.completedFuture(initialResponse);
+        }
+
+        log.info("🛡️ [QUALITY GATE] Iniciando ciclo de auto-avaliação...");
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String critiquePrompt = String.format(
+                        """
+                                Atue como um Supervisor de Qualidade de IA (AI Quality Gate).
+                                Sua tarefa é avaliar a resposta gerada para o prompt do usuário e, se necessário, reescreve-la para garantir excelência.
+
+                                PROMPT ORIGINAL DO USUÁRIO:
+                                "%s"
+
+                                RESPOSTA GERADA (Candidata):
+                                "%s"
+
+                                CRITÉRIOS DE APROVAÇÃO:
+                                1. A resposta segue estritamente o que foi pedido? (Escopo)
+                                2. O formato está correto? (Ex: Se pediu JSON, é JSON válido? Se pediu lista, é lista?)
+                                3. Há alucinações, invenções ou enrolação?
+                                4. O tom é profissional e direto?
+
+                                INSTRUÇÕES DE SAÍDA:
+                                - Se a qualidade for ALTA (Atende tudo perfeitamente): Score "HIGH".
+                                - Se houver falhas menores ou oportunidade de melhoria: Score "MEDIUM".
+                                - Se houver falhas graves, alucinação ou formato errado: Score "LOW".
+
+                                Retorne APENAS um JSON com o seguinte formato (sem markdown):
+                                {
+                                  "score": "HIGH" | "MEDIUM" | "LOW",
+                                  "critique": "Explicação breve do julgamento",
+                                  "improvedResponse": "A versão corrigida e melhorada da resposta (Obrigatório se score for LOW/MEDIUM, opcional se HIGH)"
+                                }
+                                """,
+                        userPrompt, initialResponse.getContent());
+
+                // Usar modelo Fallback (geralmente Cloud/Groq) por ser mais rápido e
+                // inteligente para validação
+                String validatorProviderName = FALLBACK_PROVIDER;
+                AIProvider validatorProvider = getProvider(validatorProviderName);
+
+                AIProviderRequest validationRequest = new AIProviderRequest(
+                        critiquePrompt,
+                        "Você é um Quality Gate rigoroso. Retorne apenas JSON.",
+                        null,
+                        validatorProviderName,
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0.0, // Temperatura 0 para máxima consistência
+                        null);
+
+                AIProviderResponse validationResponse = executeAndLogTask(validationRequest, validatorProvider,
+                        "Quality Gate Analysis").join();
+
+                String jsonResult = sanitizeResponse(validationResponse.getContent());
+                QualityGateResult result = objectMapper.readValue(jsonResult, QualityGateResult.class);
+
+                if ("HIGH".equalsIgnoreCase(result.score)) {
+                    log.info("✅ [QUALITY GATE] Resposta APROVADA (Score: HIGH). Nenhuma alteração necessária.");
+                    return initialResponse;
+                } else {
+                    log.warn("⚠️ [QUALITY GATE] Resposta REJEITADA (Score: {}). Motivo: {}", result.score,
+                            result.critique);
+
+                    if (result.improvedResponse != null && !result.improvedResponse.isBlank()) {
+                        log.info("✨ [QUALITY GATE] Aplicando versão refinada...");
+                        initialResponse.setContent(result.improvedResponse);
+                    } else {
+                        log.warn("⚠️ [QUALITY GATE] Nenhuma versão refinada fornecida, mantendo original.");
+                    }
+                    return initialResponse;
+                }
+
+            } catch (Exception e) {
+                log.error("❌ [QUALITY GATE] Erro na execução do gate. Mantendo resposta original. Erro: {}",
+                        e.getMessage());
+                // Fail-open: Retorna resposta original em caso de erro no gate
+                return initialResponse;
+            }
+        });
+    }
+
+    public record QualityGateResult(String score, String critique, String improvedResponse) {
     }
 }
