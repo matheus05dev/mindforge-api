@@ -72,6 +72,7 @@ public class GroqProvider implements AIProvider {
         INSTANT("llama-3.1-8b-instant", 1024, null),
         GPT_OSS("openai/gpt-oss-20b", 8192, "medium"),
         QWEN("qwen/qwen3-32b", 4096, "default"),
+        VISION("meta-llama/llama-4-maverick-17b-128e-instruct", 1024, null), // 🔥 Llama 4 Maverick (New Vision Model)
         SCOUT("meta-llama/llama-4-scout-17b-16e-instruct", 1024, null),
         MAVERICK("meta-llama/llama-4-maverick-17b-128e-instruct", 1024, null);
 
@@ -111,6 +112,12 @@ public class GroqProvider implements AIProvider {
             try {
                 // Validar budget antes de fazer a requisição
                 GroqModel selectedModel = GroqModel.fromString(request.model());
+
+                // 🔥 AUTO-SWITCH TO VISION MODEL IF MULTIMODAL
+                if (request.multimodal() && request.imageData() != null) {
+                    log.info("👁️ Modo Multimodal detectado no Groq. Alternando para modelo Vision.");
+                    selectedModel = GroqModel.VISION;
+                }
                 int estimatedTokens = estimateTokens(SYSTEM_INSTRUCTION, request.textPrompt(),
                         selectedModel.getMaxTokens());
 

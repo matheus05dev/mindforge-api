@@ -43,16 +43,13 @@ import java.util.stream.IntStream;
 @Slf4j
 /**
  * Serviço central de orquestração de Inteligência Artificial.
- * <p>
  * Responsável por gerenciar o fluxo completo de requisições de IA, incluindo:
- * <ul>
- * <li>Roteamento inteligente entre provedores (Local vs Cloud).</li>
- * <li>Gerenciamento de contexto e sessões de chat.</li>
- * <li>Execução de pipelines RAG (Retrieval-Augmented Generation).</li>
- * <li>Análise de documentos (One-Shot, Map-Reduce).</li>
- * <li>Integração com serviços de memória e aprendizado do usuário.</li>
- * </ul>
- * atua como o "cérebro" que coordena os diversos componentes do sistema
+ * Roteamento inteligente entre provedores (Local vs Cloud).
+ * Gerenciamento de contexto e sessões de chat.
+ * Execução de pipelines RAG (Retrieval-Augmented Generation).
+ * Análise de documentos (One-Shot, Map-Reduce).
+ * Integração com serviços de memória e aprendizado do usuário.
+ * Atua como o "cérebro" que coordena os diversos componentes do sistema
  * MindForge.
  */
 public class AIOrchestrationService {
@@ -1443,8 +1440,10 @@ public class AIOrchestrationService {
                        - Se for um conceito básico, insira nas seções iniciais.
                     3. **Granularidade**: Se for uma correção pequena, substitua apenas a frase/parágrafo. Se for um tópico novo, adicione a seção completa.
 
+
                     **FORMATO DE RESPOSTA:**
-                    Retorne APENAS um JSON válido.
+                    Retorne APENAS um JSON válido. NÃO envolva o JSON em blocos de código markdown (```json ... ```).
+                    A resposta deve começar diretamente com { e terminar com }.
                     IMPORTANTE: Para strings multilinha, utilize "\\n" explícito. NÃO utilize backticks (`) para envolver strings, isso quebra o parser JSON.
                     Exemplo CORRETO: "proposedContent": "Linha 1\\nLinha 2"
                     Exemplo INCORRETO: "proposedContent": `Linha 1
