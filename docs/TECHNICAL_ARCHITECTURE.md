@@ -1083,31 +1083,48 @@ erDiagram
     WORKSPACE ||--o{ SUBJECT : contains
     WORKSPACE ||--o{ KANBAN_BOARD : contains
     WORKSPACE ||--o{ KNOWLEDGE_ITEM : contains
-    
+    WORKSPACE ||--o{ MIND_MAP : contains
+
     PROJECT ||--o{ MILESTONE : has
     PROJECT ||--o{ DOCUMENT : has
-    PROJECT ||--o| CHAT_SESSION : "context for"
-    
+    PROJECT ||--o{ CHAT_SESSION : "context for"
+
     SUBJECT ||--o{ STUDY_SESSION : has
-    SUBJECT ||--o| CHAT_SESSION : "context for"
-    
+    SUBJECT ||--o{ CHAT_SESSION : "context for"
+    SUBJECT ||--o{ STUDY_RESOURCE : has
+    SUBJECT ||--o{ QUIZ : has
+    SUBJECT ||--o{ STUDY_NOTE : has
+
+    MIND_MAP }o--|| WORKSPACE : belongs_to
+
     KANBAN_BOARD ||--o{ KANBAN_COLUMN : has
     KANBAN_COLUMN ||--o{ KANBAN_TASK : has
-    
+
     KNOWLEDGE_ITEM ||--o{ DOCUMENT : has
-    
+    KNOWLEDGE_ITEM ||--o{ CHAT_SESSION : "context for"
+
+    ROADMAP ||--o{ ROADMAP_ITEM : has
+
+    QUIZ ||--o{ QUIZ_QUESTION : has
+
     CHAT_SESSION ||--o{ CHAT_MESSAGE : has
-    
+    CHAT_SESSION }o--|| STUDY_NOTE : "context for"
+
+    DOCUMENT }o--|| PROJECT : belongs_to
+    DOCUMENT }o--|| KANBAN_TASK : belongs_to
+    DOCUMENT }o--|| KNOWLEDGE_ITEM : belongs_to
+    DOCUMENT }o--|| STUDY_SESSION : belongs_to
+
     USER_PROFILE_AI }o--|| USER : "belongs to"
     USER_INTEGRATION }o--|| USER : "belongs to"
-    
+
     WORKSPACE {
         bigint id PK
         string name
         string description
         string type
     }
-    
+
     PROJECT {
         bigint id PK
         bigint workspace_id FK
@@ -1115,24 +1132,53 @@ erDiagram
         string description
         string github_repo_url
     }
-    
+
     SUBJECT {
         bigint id PK
         bigint workspace_id FK
         string name
         string description
         string proficiency_level
-        string professional_level
     }
-    
+
+    MIND_MAP {
+        bigint id PK
+        bigint workspace_id FK
+        string name
+        text nodes_json
+        text edges_json
+    }
+
+    ROADMAP {
+        bigint id PK
+        string title
+        string target_audience
+    }
+
+    STUDY_NOTE {
+        bigint id PK
+        bigint subject_id FK
+        string title
+        text content
+    }
+
+    QUIZ {
+        bigint id PK
+        bigint subject_id FK
+        string title
+        string difficulty
+    }
+
     CHAT_SESSION {
         bigint id PK
         string title
         timestamp created_at
         bigint project_id FK
         bigint subject_id FK
+        bigint knowledge_item_id FK
+        bigint study_note_id FK
     }
-    
+
     CHAT_MESSAGE {
         bigint id PK
         bigint session_id FK
@@ -1140,7 +1186,7 @@ erDiagram
         text content
         timestamp created_at
     }
-    
+
     USER_PROFILE_AI {
         bigint id PK
         text summary
