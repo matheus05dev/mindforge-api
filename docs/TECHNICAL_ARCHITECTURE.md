@@ -7,11 +7,12 @@
 3. [Padrão AI Provider e Orquestração](#3-padrão-ai-provider-e-orquestração)
 4. [Engenharia de Prompt e Memória](#4-engenharia-de-prompt-e-memória)
 5. [Bounded Contexts e Domínios de Negócio](#5-bounded-contexts-e-domínios-de-negócio)
-6. [Justificativas Tecnológicas e Trade-offs](#6-justificativas-tecnológicas-e-trade-offs)
-7. [Conexões com APIs Externas e Integrações](#7-conexões-com-apis-externas-e-integrações)
-8. [Modelagem de Dados e Esquema do Banco](#8-modelagem-de-dados-e-esquema-do-banco)
-9. [Trade-offs Atuais e Roadmap](#9-trade-offs-atuais-e-roadmap)
-10. [Conclusão](#10-conclusão)
+6. [Padrões de Design e Suas Necessidades Reais](#6-padrões-de-design-e-suas-necessidades-reais)
+7. [Justificativas Tecnológicas e Trade-offs](#7-justificativas-tecnológicas-e-trade-offs)
+8. [Conexões com APIs Externas e Integrações](#8-conexões-com-apis-externas-e-integrações)
+9. [Modelagem de Dados e Esquema do Banco](#9-modelagem-de-dados-e-esquema-do-banco)
+10. [Trade-offs Atuais](#10-trade-offs-atuais)
+11. [Conclusão](#11-conclusão)
 
 ---
 
@@ -312,9 +313,459 @@ com.matheusdev.mindforge/
 
 ---
 
-## 6. Justificativas Tecnológicas e Trade-offs
+## 6. Padrões de Design e Suas Necessidades Reais
 
-### 6.1. Escolha da Stack Java/Spring Boot
+A arquitetura do MindForge não foi construída seguindo padrões "porque sim" ou para demonstrar conhecimento teórico. Cada padrão implementado resolve um **problema concreto** que surgiu das necessidades do domínio de IA e produtividade. Esta seção explica as decisões arquiteturais baseadas em necessidades reais.
+
+### 6.1. Strategy Pattern (AIProvider)
+
+**Problema Real**: O projeto precisa integrar múltiplos provedores de IA (Ollama local, Groq cloud) e potencialmente adicionar mais no futuro (OpenAI, Anthropic). Cada provedor tem:
+- APIs diferentes (endpoints, formatos de request/response)
+- Características distintas (latência, custo, capacidade)
+- Casos de uso específicos (privacidade vs performance)
+
+**Solução Ingênua (Descartada)**:
+```java
+public String callAI(String prompt) {
+    if (useOllama) {
+        // Código específico Ollama
+    } else if (useGroq) {
+        // Código específico Groq
+    }
+    // Adicionar novo provedor = modificar este método
+}
+```
+
+**Problemas da Solução Ingênua**:
+- Violação do Open/Closed Principle (modificar código existente para adicionar provedor)
+- Lógica de negócio acoplada a detalhes de implementação
+- Impossível testar provedores isoladamente
+- Código cresce exponencialmente com cada novo provedor
+
+**Solução Implementada (Strategy Pattern)**:
+```java
+public interface AIProvider {
+    AIProviderResponse executeTask(AIProviderRequest request);
+}
+
+// Implementações concretas
+public class OllamaProvider implements AIProvider { ... }
+public class GroqProvider implements AIProvider { ... }
+
+// Orquestrador decide qual usar
+public class AIOrchestrationService {
+    public AIProviderResponse execute(AIRequest request) {
+        AIProvider provider = selectProvider(request);
+        return provider.executeTask(request);
+    }
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Adicionar novo provedor = criar nova classe (sem modificar código existente)
+- ✅ Trocar de Ollama para Groq = mudar configuração (zero código)
+- ✅ Testar com mock provider = injetar implementação fake
+- ✅ Fallback automático = tentar provider alternativo sem duplicar lógica
+
+**Por Que Era Necessário**: O sistema **precisa** de flexibilidade para:
+1. Usar Ollama quando disponível (zero custo, privacidade)
+2. Fazer fallback para Groq quando Ollama falha
+3. Adicionar OpenAI/Anthropic no futuro sem refatoração massiva
+
+---
+
+### 6.2. Factory Pattern (Provider Selection)
+
+**Problema Real**: Cada orquestrador precisa **criar/obter** a instância correta de `AIProvider` baseado em uma string (nome do provedor). Não podemos instanciar diretamente porque:
+- Provedores são gerenciados pelo Spring (injeção de dependência)
+- Seleção é dinâmica (runtime, não compile-time)
+- Múltiplos orquestradores precisam da mesma lógica de seleção
+
+**Solução Ingênua (Descartada)**:
+```java
+public AIProvider selectProvider(String name) {
+    if (name.equals("ollamaProvider")) {
+        return new OllamaProvider(restTemplate, config); // Quebra DI
+    } else if (name.equals("groqProvider")) {
+        return new GroqProvider(restTemplate, config); // Quebra DI
+    }
+    // Adicionar provedor = modificar este método
+}
+```
+
+**Problemas da Solução Ingênua**:
+- Quebra injeção de dependência do Spring
+- Duplicação de lógica em cada orquestrador
+- Impossível mockar provedores em testes
+- Violação do DRY (Don't Repeat Yourself)
+
+**Solução Implementada (Factory Pattern com Spring)**:
+```java
+@Service
+public class ExecutionStep {
+    // Spring injeta TODOS os providers em um Map
+    private final Map<String, AIProvider> aiProviders;
+    
+    // Factory Method: retorna provider baseado no nome
+    private AIProvider getProvider(String providerName) {
+        AIProvider provider = aiProviders.get(providerName);
+        if (provider == null) {
+            throw new IllegalArgumentException("Provedor desconhecido: " + providerName);
+        }
+        return provider;
+    }
+    
+    // Uso
+    public void execute() {
+        AIProvider provider = getProvider("ollamaProvider");
+        provider.executeTask(request);
+    }
+}
+```
+
+**Como Spring Popula o Map**:
+```java
+// Spring detecta todas as implementações de AIProvider
+// e injeta em um Map<String, AIProvider> onde:
+// - Key = nome do bean ("ollamaProvider", "groqProvider")
+// - Value = instância gerenciada pelo Spring
+
+Map<String, AIProvider> aiProviders = {
+    "ollamaProvider" -> OllamaProvider@123,
+    "groqProvider" -> GroqProvider@456
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Adicionar novo provedor = criar classe + anotar com `@Service` (zero mudança em orquestradores)
+- ✅ Spring gerencia ciclo de vida (injeção de dependências, configuração)
+- ✅ Lógica centralizada (DRY - não duplicar em cada orquestrador)
+- ✅ Testável (mockar Map de providers)
+- ✅ Type-safe (compilador garante que key existe)
+
+**Por Que Era Necessário**: O sistema tem **7+ orquestradores** (ChatOrchestrator, DocumentAnalysisOrchestrator, QuizGeneratorService, etc.) e **todos** precisam selecionar providers dinamicamente. Sem Factory Pattern:
+- Duplicação de lógica de seleção em 7+ lugares
+- Impossível garantir consistência
+- Adicionar provedor = modificar 7+ arquivos
+
+**Padrão Complementar**: Factory trabalha **junto** com Strategy. Strategy define a interface (`AIProvider`), Factory cria/seleciona a implementação correta.
+
+---
+
+### 6.3. Chain of Responsibility (Prompt Building)
+
+**Problema Real**: Construir um prompt efetivo para IA requer **múltiplas etapas sequenciais**:
+1. Definir persona (Mentor, Analyst, Recruiter)
+2. Injetar contexto do usuário (perfil de aprendizado)
+3. Adicionar dados do domínio (nível de proficiência, histórico)
+4. Formatar instruções específicas da tarefa
+5. Adicionar constraints de formato de saída
+
+**Solução Ingênua (Descartada)**:
+```java
+public String buildPrompt(Request req) {
+    String prompt = "Você é um " + persona + "\n";
+    prompt += "Usuário tem perfil: " + profile + "\n";
+    prompt += "Nível: " + level + "\n";
+    // ... 50+ linhas de concatenação
+    return prompt;
+}
+```
+
+**Problemas da Solução Ingênua**:
+- Método gigante (200+ linhas) impossível de manter
+- Lógica de diferentes responsabilidades misturada
+- Impossível reutilizar etapas em diferentes contextos
+- Difícil testar etapas isoladamente
+
+**Solução Implementada (Chain of Responsibility)**:
+```java
+public interface PromptBuildingStep {
+    void process(PromptContext context);
+}
+
+// Etapas específicas
+public class PersonaInjectionStep implements PromptBuildingStep { ... }
+public class UserProfileStep implements PromptBuildingStep { ... }
+public class DomainContextStep implements PromptBuildingStep { ... }
+
+// Pipeline configurável
+public class PromptBuilder {
+    private List<PromptBuildingStep> steps;
+    
+    public String build(PromptContext context) {
+        for (PromptBuildingStep step : steps) {
+            step.process(context);
+        }
+        return context.getFinalPrompt();
+    }
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Cada etapa tem responsabilidade única (fácil de entender)
+- ✅ Reutilizar etapas em diferentes pipelines (ex: Mentor e Analyst compartilham UserProfileStep)
+- ✅ Testar cada etapa isoladamente
+- ✅ Adicionar/remover etapas sem afetar outras
+
+**Por Que Era Necessário**: Prompts de IA são **complexos e contextuais**. Um prompt para análise de código precisa de:
+- Persona técnica + perfil do usuário + nível de proficiência + código + instruções de formato
+- Prompt para quiz precisa de: Persona educacional + perfil + histórico de notas + instruções JSON
+
+Sem modularização, teríamos duplicação massiva ou métodos gigantes.
+
+---
+
+### 6.4. Repository Pattern (Acesso a Dados)
+
+**Problema Real**: A lógica de negócio não deve depender de detalhes de persistência (SQL, NoSQL, cache). Precisamos:
+- Trocar banco de dados sem reescrever serviços
+- Adicionar cache transparentemente
+- Testar serviços sem banco real
+
+**Solução Implementada**:
+```java
+public interface SubjectRepository extends JpaRepository<Subject, Long> {
+    List<Subject> findByWorkspaceId(Long workspaceId);
+    Optional<Subject> findByIdAndWorkspaceId(Long id, Long workspaceId);
+}
+
+// Serviço depende da interface, não da implementação
+public class SubjectService {
+    private final SubjectRepository repository;
+    
+    public Subject findById(Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new NotFoundException("Subject not found"));
+    }
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Trocar de PostgreSQL para MongoDB = implementar nova interface (serviços intocados)
+- ✅ Adicionar cache = decorar repository com cache layer
+- ✅ Testar serviços = mockar repository (sem banco)
+
+**Por Que Era Necessário**: O projeto está em evolução. Hoje usa PostgreSQL, mas pode precisar de:
+- Cache Redis para performance
+- Elasticsearch para busca semântica (RAG)
+- Vector database para embeddings
+
+Repository Pattern permite essas mudanças sem reescrever toda a lógica de negócio.
+
+---
+
+### 6.5. Async/Background Processing (Ciclo de Memória)
+
+**Problema Real**: Atualizar o perfil de aprendizado do usuário requer:
+1. Buscar histórico de conversas
+2. Chamar IA para meta-análise (pode levar 5-10 segundos)
+3. Salvar perfil atualizado
+
+Se feito **sincronamente**, o usuário esperaria 10+ segundos por uma resposta.
+
+**Solução Implementada**:
+```java
+@Async
+public void updateUserProfile(Long userId, ChatMessage newMessage) {
+    // Executa em thread separada
+    UserProfileAI currentProfile = profileRepository.findByUserId(userId);
+    String metaPrompt = buildMetaPrompt(currentProfile, newMessage);
+    
+    AIProviderResponse analysis = aiProvider.executeTask(metaPrompt);
+    UserProfileAI updatedProfile = parseProfile(analysis);
+    
+    profileRepository.save(updatedProfile);
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Usuário recebe resposta imediatamente (latência < 2s)
+- ✅ Sistema aprende em background (sem impacto na UX)
+- ✅ Perfil atualizado disponível na próxima interação
+
+**Por Que Era Necessário**: A experiência do usuário é **crítica**. Esperar 10s por resposta é inaceitável. Mas o sistema **precisa** aprender continuamente para personalizar respostas. Async resolve esse conflito.
+
+---
+
+### 6.6. Circuit Breaker + Retry (Resiliência)
+
+**Problema Real**: APIs externas (Ollama, Groq, GitHub) podem:
+- Falhar temporariamente (timeout de rede)
+- Ficar indisponíveis (servidor down)
+- Responder lentamente (sobrecarga)
+
+**Solução Ingênua (Descartada)**:
+```java
+public String callAPI() {
+    try {
+        return httpClient.post(url, body);
+    } catch (Exception e) {
+        return "Erro: tente novamente";
+    }
+}
+```
+
+**Problemas da Solução Ingênua**:
+- Falha transitória (1 timeout) = erro para usuário
+- API down = sistema tenta infinitamente (threads bloqueadas)
+- Sem feedback sobre saúde do sistema
+
+**Solução Implementada (Resilience4j)**:
+```java
+@CircuitBreaker(name = "aiProvider", fallbackMethod = "fallback")
+@Retry(name = "aiProvider")
+@RateLimiter(name = "aiProvider")
+public AIProviderResponse callGroq(Request req) {
+    return restTemplate.postForObject(groqUrl, req, Response.class);
+}
+
+public AIProviderResponse fallback(Request req, Exception e) {
+    // Tenta Ollama como fallback
+    return ollamaProvider.executeTask(req);
+}
+```
+
+**Benefícios Concretos**:
+- ✅ Timeout transitório = retry automático (3 tentativas)
+- ✅ Groq down = circuit breaker abre, fallback para Ollama
+- ✅ Sistema não trava threads esperando API morta
+- ✅ Métricas de saúde disponíveis (taxa de falha, latência)
+
+**Por Que Era Necessário**: Sistemas de IA dependem de **múltiplos serviços externos**. Sem resiliência:
+- 1 falha de rede = usuário vê erro
+- Ollama travado = aplicação inteira trava
+- API rate limit = sistema para de funcionar
+
+---
+
+### 6.7. DTO Pattern (Separação de Camadas)
+
+**Problema Real**: Entidades JPA não devem ser expostas diretamente na API porque:
+- Contêm anotações de persistência (poluição de responsabilidades)
+- Podem ter lazy loading (erros de serialização JSON)
+- Mudanças no banco afetam contratos da API
+
+**Solução Implementada**:
+```java
+// Entidade (camada de persistência)
+@Entity
+public class Subject {
+    @Id private Long id;
+    @ManyToOne(fetch = LAZY) private Workspace workspace;
+    @OneToMany(mappedBy = "subject") private List<StudySession> sessions;
+}
+
+// DTO (camada de API)
+public record SubjectDTO(
+    Long id,
+    String name,
+    String proficiencyLevel,
+    List<StudySessionDTO> sessions
+) {}
+
+// Conversão
+public SubjectDTO toDTO(Subject entity) {
+    return new SubjectDTO(
+        entity.getId(),
+        entity.getName(),
+        entity.getProficiencyLevel().name(),
+        entity.getSessions().stream().map(this::toDTO).toList()
+    );
+}
+```
+
+**Benefícios Concretos**:
+- ✅ API estável mesmo com mudanças no banco
+- ✅ Controle total sobre o que é exposto (segurança)
+- ✅ Sem problemas de lazy loading em JSON
+
+**Por Que Era Necessário**: Frontend e backend evoluem independentemente. Expor entidades JPA diretamente = acoplamento forte entre camadas.
+
+---
+
+### 6.7. Facade Pattern (AI Orchestrator)
+
+**Problema Real**: O sistema possui **7+ orquestradores especializados** (Chat, Document, Quiz, Roadmap, etc.), cada um com complexidade interna. Os controllers (API layer) não devem conhecer essa complexidade.
+
+**Solução Ingênua (Descartada)**: Injetar todos os 7 orquestradores em cada Controller ou ter controllers gigantes gerenciando lógica de roteamento.
+
+**Solução Implementada**:
+```java
+@Service
+public class AIOrchestrationService {
+    // Fachada única para todos os serviços de IA
+    private final ChatOrchestrator chat;
+    private final DocumentOrchestrator doc;
+    private final QuizGenerator quiz;
+    
+    // Método simples exposto para o cliente
+    public Response handleChat(Request req) {
+        return chat.execute(req); // Delega para o especialista
+    }
+}
+```
+
+**Benefícios Concretos**:
+- ✅ API limpa: Controllers só conhecem **um** serviço de entrada.
+- ✅ Baixo acoplamento: Mudanças internas nos orquestradores não quebram a API.
+- ✅ Ponto único de entrada: Facilita logging centralizado e tratamentos globais.
+
+---
+
+### 6.8. Command Pattern (AI Processing Steps)
+
+**Problema Real**: Pipeline de processamento de IA (Validação -> Contexto -> Prompt -> Execução -> Auditoria) precisa ser flexível e testável.
+
+**Solução Implementada**: A interface `AIProcessingStep` atua como um **Command**:
+```java
+public interface AIProcessingStep {
+    CompletableFuture<AIContext> execute(AIContext context);
+}
+```
+
+Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O `ChatOrchestrator` apenas invoca a sequência de comandos.
+
+**Benefícios Concretos**:
+- ✅ SRP: Cada passo faz apenas uma coisa.
+- ✅ Testabilidade: Testar `ValidationStep` isolado do resto.
+- ✅ Reordenação: Mudar a ordem dos passos é trivial.
+
+---
+
+### 6.9. Ports & Adapters (Hexagonal Architecture)
+
+**Observação**: Embora o projeto seja um monólito modular, a camada de integração de IA segue estritamente **Ports & Adapters**.
+
+- **Port (Porta)**: Interface `AIProvider` (define o contrato que o domínio precisa).
+- **Adapters (Adaptadores)**: `OllamaProvider` e `GroqProvider` (implementam a conexão com o mundo externo).
+
+**Benefício Real**: Isso blinda o "Core Domain" (lógica de orquestração e prompt) contra mudanças nas APIs externas. Se a API do Groq mudar, apenas o `GroqProvider` (o adaptador) muda; o domínio permanece intacto.
+
+---
+
+### 6.10. Resumo: Padrões vs Necessidades
+
+| Padrão | Problema Real Resolvido | Alternativa Ingênua | Custo de Não Usar |
+|--------|------------------------|---------------------|-------------------|
+| **Strategy** | Múltiplos provedores de IA | If/else gigante | Código rígido, impossível adicionar provedores |
+| **Factory** | Seleção dinâmica de providers | If/else em cada orquestrador | Duplicação em 7+ lugares, quebra DI |
+| **Facade** | 7+ services de IA complexos | Injetar 7 services no Controller | Controller gordo, alto acoplamento |
+| **Command** | Pipeline de IA complexo (steps) | Código procedural gigante | Difícil testar steps isolados |
+| **Adapter** | Blindagem contra APIs externas | Código acoplado à lib externa | Mudança no Groq quebra Core Domain |
+| **Chain of Responsibility** | Prompts complexos e modulares | Método de 200+ linhas | Duplicação massiva, manutenção impossível |
+| **Repository** | Abstração de persistência | SQL direto nos serviços | Impossível trocar banco ou adicionar cache |
+| **Async** | Aprendizado sem latência | Processamento síncrono | UX ruim (10s de espera) |
+| **Circuit Breaker** | APIs externas instáveis | Try/catch simples | Sistema trava com APIs down |
+| **DTO** | Separação API/Persistência | Expor entidades JPA | Acoplamento forte, bugs de serialização |
+
+**Conclusão**: Cada padrão foi escolhido para resolver um **problema específico** do domínio de IA e produtividade. Não é over-engineering, é engenharia pragmática para um sistema que precisa ser **flexível, resiliente e escalável**.
+
+---
+
+## 7. Justificativas Tecnológicas e Trade-offs
+
+### 7.1. Escolha da Stack Java/Spring Boot
 
 **Tecnologias**:
 - **Java 21**: Recursos modernos (Records, Pattern Matching, Virtual Threads)
@@ -332,7 +783,7 @@ com.matheusdev.mindforge/
 - **Overhead**: Maior consumo de memória comparado a frameworks mais leves
 - **Velocidade de Startup**: Mais lento que alternativas minimalistas
 
-### 6.2. Escolha do Padrão AI Provider (Monólito)
+### 7.2. Escolha do Padrão AI Provider (Monólito)
 
 **Decisão**: Integrar IA diretamente na aplicação Java.
 
@@ -346,7 +797,7 @@ com.matheusdev.mindforge/
 - **Ecossistema Python**: Perda de acesso a bibliotecas especializadas (LangChain, LlamaIndex)
 - **Processamento de IA**: Processamento CPU-intensivo pode competir com lógica de negócio
 
-### 6.3. Escolha dos Modelos de IA (Multi-Provider)
+### 7.3. Escolha dos Modelos de IA (Multi-Provider)
 
 **Provedores**:
 - **Groq**: Infraestrutura de IA de alta performance
@@ -370,7 +821,7 @@ com.matheusdev.mindforge/
 - **Gerenciamento**: Necessidade de gerenciar múltiplas chaves de API
 - **Contratos**: Diferentes provedores têm contratos distintos
 
-### 6.4. Frontend Desacoplado (API-First)
+### 7.4. Frontend Desacoplado (API-First)
 
 **Decisão**: API projetada para ser consumida por qualquer cliente.
 
@@ -384,7 +835,7 @@ com.matheusdev.mindforge/
 - **Overhead de Comunicação**: Necessidade de serialização/deserialização HTTP
 - **CORS e Segurança**: Requer configuração adequada para acesso cross-origin
 
-### 6.5. Persistência: PostgreSQL + JPA/Hibernate
+### 7.5. Persistência: PostgreSQL + JPA/Hibernate
 
 **Justificativa**:
 - **SQL Relacional**: Banco de dados relacional maduro e confiável
@@ -398,11 +849,11 @@ com.matheusdev.mindforge/
 
 ---
 
-## 7. Conexões com APIs Externas e Integrações
+## 8. Conexões com APIs Externas e Integrações
 
 O MindForge integra-se com múltiplas APIs externas para fornecer funcionalidades avançadas. Cada integração implementa padrões de resiliência e tratamento de erros adequados.
 
-### 7.1. Arquitetura de Integrações
+### 8.1. Arquitetura de Integrações
 
 ```mermaid
 flowchart TD
@@ -421,7 +872,7 @@ flowchart TD
 
 
 
-### 7.3. Integração com Groq API
+### 8.2. Integração com Groq API
 
 **Propósito**: Múltiplos modelos/agentes especializados, baixa latência.
 
@@ -455,6 +906,39 @@ sequenceDiagram
     Service->>Service: Retornar AIProviderResponse
 ```
 
+### 7.3.1. Fallback Strategy
+
+**Implementação**: Lógica de orquestração no `GroqOrchestratorService` e métodos de fallback em cada provider.
+
+**Comportamento**:
+- **Nível de Provider**: Cada `AIProvider` implementa método `fallback()` chamado quando Circuit Breaker abre
+- **Nível de Orquestração**: `GroqOrchestratorService` implementa fallback entre modelos (VERSATILE → INSTANT)
+
+```mermaid
+flowchart TD
+    Request[Requisição de IA] --> AIOrch[AIOrchestrationService]
+    
+    AIOrch -->|Preferência: Ollama| OllamaProvider[OllamaProvider]
+    AIOrch -->|Preferência: Groq| GroqOrch[GroqOrchestratorService]
+    
+    OllamaProvider -->|Falha/Timeout| OllamaFallback[Fallback: Groq]
+    OllamaProvider -->|Sucesso| Response1[Resposta]
+    
+    GroqOrch -->|Tenta VERSATILE| GroqProvider[GroqProvider]
+    
+    GroqProvider -->|Circuito Aberto| GroqFallback[Fallback: Mensagem de Erro]
+    GroqProvider -->|Falha Modelo| GroqOrch
+    
+    GroqOrch -->|Fallback: INSTANT| GroqProvider2[GroqProvider<br/>Modelo: INSTANT]
+    GroqProvider2 -->|Sucesso| Response2[Resposta]
+    GroqProvider2 -->|Circuito Aberto| GroqFallback
+    
+    OllamaFallback --> GroqOrch
+    Response1 --> FinalResponse[Resposta Final]
+    Response2 --> FinalResponse
+    GroqFallback --> FinalResponse
+```
+
 **Orquestração com Fallback**:
 O `GroqOrchestratorService` implementa fallback automático entre modelos:
 1. Tenta com modelo preferencial (ex: VERSATILE)
@@ -468,7 +952,7 @@ O `GroqOrchestratorService` implementa fallback automático entre modelos:
 - Time Limiter (5 segundos timeout)
 - Fallback method implementado
 
-### 7.4. Integração com GitHub API
+### 8.3. Integração com GitHub API
 
 **Propósito**: Buscar conteúdo de arquivos de repositórios para análise de código.
 
@@ -514,18 +998,44 @@ sequenceDiagram
     end
 ```
 
-**Tratamento de Erros**:
-- **401 Unauthorized**: Tenta refresh token automaticamente
-- **404 Not Found**: Repositório ou arquivo não encontrado
-- **403 Forbidden**: Sem permissão de acesso
-- **Rate Limiting**: GitHub pode limitar requisições (não implementado ainda)
-
 **Segurança**:
 - Tokens armazenados de forma segura no banco de dados
 - Refresh automático de tokens expirados
 - Tratamento de erros de autenticação robusto
 
-### 7.5. Configuração de RestTemplate
+### 8.4. Integração com Web Research API (Tavily/RAG)
+
+**Propósito**: Realizar pesquisas na web em tempo real para enriquecer a base de conhecimento da IA e reduzir alucinações (search grounding).
+
+**Serviço**: `WebSearchService` (abstração interna)
+**Provedor**: Tavily AI (`TavilyWebSearchEngine`)
+
+**Fluxo de Utilização**:
+Utilizado principalmente nos serviços de geração de conteúdo estruturado (`QuizService`, `RoadmapGeneratorService`) para garantir atualidade.
+
+```mermaid
+sequenceDiagram
+    participant Generator as Roadmap/Quiz Service
+    participant Search as WebSearchService
+    participant Tavily as Tavily API
+    
+    Generator->>Generator: 1. Gera queries de busca otimizadas
+    Generator->>Search: 2. search(query)
+    Search->>Tavily: 3. POST /search { query, include_answer, search_depth }
+    Tavily-->>Search: 4. JSON Results (Title, URL, Content)
+    Search-->>Generator: 5. List<WebSearchResult>
+    Generator->>Generator: 6. Enriquece Prompt com resultados (Context Injection)
+```
+
+**Configuração**:
+- **API Key**: Injetada via `@Value("${tavily.api.key}")`
+- **Engine**: Implementação via `langchain4j-web-search-tavily`
+
+**Casos de Uso**:
+- **Roadmaps**: Busca cursos, tutoriais e documentação oficial atualizada.
+- **Quizzes**: Valida fatos e busca exemplos recentes para perguntas.
+
+### 8.5. Configuração de RestTemplate
 
 O projeto utiliza `RestTemplate` para todas as chamadas HTTP externas:
 
@@ -561,11 +1071,11 @@ public RestTemplate restTemplate(RestTemplateBuilder builder) {
 
 ---
 
-## 8. Modelagem de Dados e Esquema do Banco
+## 9. Modelagem de Dados e Esquema do Banco
 
 O MindForge utiliza **PostgreSQL** como banco de dados relacional, com mapeamento objeto-relacional via **JPA/Hibernate**.
 
-### 8.1. Diagrama de Entidade-Relacionamento (ER)
+### 9.1. Diagrama de Entidade-Relacionamento (ER)
 
 ```mermaid
 erDiagram
@@ -642,7 +1152,7 @@ erDiagram
     }
 ```
 
-### 8.2. Entidades Principais e Relacionamentos
+### 9.2. Entidades Principais e Relacionamentos
 
 #### Workspace (Raiz de Agregação)
 - **Relacionamentos**:
@@ -679,7 +1189,7 @@ erDiagram
   - `communicationTone`: Enum (ENCOURAGING, DIRECT, etc.)
   - `preferredModel`: Modelo de IA preferido do usuário
 
-### 8.3. Estratégias de Persistência
+### 9.3. Estratégias de Persistência
 
 **Fetch Types**:
 - **LAZY**: Relacionamentos `@ManyToOne` e `@OneToMany` por padrão
@@ -696,7 +1206,7 @@ erDiagram
 **Geração de IDs**:
 - **@GeneratedValue(strategy = GenerationType.IDENTITY)**: IDs auto-incrementais
 
-### 8.4. Tratamento de Dados
+### 9.4. Tratamento de Dados
 
 #### Validação de Entrada
 - **Bean Validation**: Anotações `@NotNull`, `@NotEmpty`, `@Size` nas entidades
@@ -715,9 +1225,9 @@ erDiagram
 
 ---
 
-## 9. Trade-offs Atuais e Roadmap
+## 10. Trade-offs Atuais
 
-### 9.1. Autenticação e Perfil de Usuário (Trade-offs Atuais)
+### 10.1. Autenticação e Perfil de Usuário (Trade-offs Atuais)
 
 **Estado Atual**:
 O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade de segurança e multi-tenancy foi conscientemente adiada para focar na lógica de IA e arquitetura core.
@@ -732,49 +1242,9 @@ O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade
 - **Desenvolvimento Acelerado**: Redução de complexidade inicial
 - **Arquitetura Preparada**: Estrutura permite adição futura de autenticação
 
-### 9.2. Próximas Atualizações (Roadmap)
-
-#### Curto Prazo
-1. **Sistema de Autenticação e Autorização**
-   - Spring Security + JWT
-   - Proteção de endpoints
-   - Gerenciamento de sessões
-
-2. **Suporte Multi-Usuário**
-   - Criação de perfil de usuário
-   - Isolamento de dados por usuário
-   - Workspaces individuais
-
-#### Médio Prazo
-3. **Workspaces Colaborativos**
-   - Compartilhamento de projetos e estudos
-   - Gerenciamento de permissões
-   - Colaboração em tempo real
-
-4. **Refinamento da Memória da IA**
-   - Aprimoramento dos meta-prompts
-   - Perfil de aprendizado mais detalhado
-   - Personalização avançada
-
-#### Longo Prazo
-5. **Métricas e Observabilidade**
-   - Micrometer + Prometheus
-   - Grafana dashboards
-   - Alertas e monitoramento
-
-6. **Otimização de Performance**
-   - Testes de carga
-   - Cache estratégico
-   - Otimização de queries
-
-7. **CI/CD Completo**
-   - Pipeline automatizado
-   - Deploy automatizado
-   - Testes automatizados
-
 ---
 
-## 10. Conclusão
+## 11. Conclusão
 
 Este documento serve como um guia abrangente para a arquitetura do MindForge, detalhando suas escolhas de design, fluxos de dados, padrões implementados e o caminho para sua evolução.
 

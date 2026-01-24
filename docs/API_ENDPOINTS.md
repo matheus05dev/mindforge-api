@@ -1049,6 +1049,193 @@ curl -X POST "http://localhost:8080/v1/ai/document/analyze" \
 
 ---
 
+## 📝 Study Notes
+
+### POST `/api/studies/notes/subjects/{subjectId}/notes`
+Cria uma nova anotação de estudo para um assunto.
+
+**Entrada:**
+```json
+{
+  "title": "Streams API em Java",
+  "content": "# Streams API\n\nConceitos importantes sobre streams..."
+}
+```
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "subjectId": 1,
+  "title": "Streams API em Java",
+  "content": "# Streams API\n\nConceitos importantes sobre streams...",
+  "createdAt": "2024-01-15T10:00:00",
+  "updatedAt": "2024-01-15T10:00:00"
+}
+```
+
+---
+
+### POST `/api/studies/notes/notes/ai`
+Solicita assistência da IA para editar/melhorar uma anotação de estudo.
+
+**Entrada:**
+```json
+{
+  "noteId": 1,
+  "instruction": "Adicione exemplos práticos de uso de streams"
+}
+```
+
+**Resposta:**
+```json
+{
+  "proposalId": "uuid-here",
+  "summary": "Adicionei 3 exemplos práticos de streams",
+  "changes": [...]
+}
+```
+
+---
+
+### POST `/api/studies/notes/notes/ai/proposals/{proposalId}/apply`
+Aplica uma proposta de mudança da IA à anotação.
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "title": "Streams API em Java",
+  "content": "Conteúdo atualizado com as mudanças...",
+  "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+---
+
+## 🎯 Study Quizzes
+
+### POST `/api/studies/quizzes/subjects/{subjectId}/quizzes/generate`
+Gera um quiz automaticamente usando IA baseado nas anotações do assunto.
+
+**Entrada:**
+```json
+{
+  "difficulty": "INTERMEDIATE",
+  "questionCount": 10
+}
+```
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "subjectId": 1,
+  "title": "Quiz de Java - Streams API",
+  "questions": [
+    {
+      "id": 1,
+      "questionText": "O que é um Stream em Java?",
+      "options": ["A", "B", "C", "D"],
+      "correctAnswer": "A",
+      "explanation": "Streams são..."
+    }
+  ],
+  "createdAt": "2024-01-15T10:00:00"
+}
+```
+
+---
+
+## 🗺️ Study Roadmaps
+
+### POST `/api/studies/roadmaps/generate`
+Gera um roadmap de estudos personalizado usando IA.
+
+**Entrada:**
+```json
+{
+  "topic": "Desenvolvimento Full Stack com Java e React",
+  "durationWeeks": 12,
+  "difficulty": "INTERMEDIATE"
+}
+```
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "topic": "Desenvolvimento Full Stack com Java e React",
+  "durationWeeks": 12,
+  "difficulty": "INTERMEDIATE",
+  "items": [
+    {
+      "week": 1,
+      "title": "Fundamentos de Java",
+      "description": "Sintaxe básica, OOP, Collections",
+      "resources": [
+        {
+          "title": "Java Tutorial - Oracle",
+          "url": "https://docs.oracle.com/javase/tutorial/",
+          "type": "DOCUMENTATION"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2024-01-15T10:00:00"
+}
+```
+
+---
+
+## 🧠 Mind Maps
+
+### POST `/api/mind-map`
+Salva ou atualiza um mapa mental.
+
+**Entrada:**
+```json
+{
+  "subjectId": 1,
+  "content": {
+    "nodes": [...],
+    "edges": [...]
+  }
+}
+```
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "subjectId": 1,
+  "content": {...},
+  "createdAt": "2024-01-15T10:00:00",
+  "updatedAt": "2024-01-15T10:00:00"
+}
+```
+
+---
+
+### GET `/api/mind-map/subject/{subjectId}`
+Busca o mapa mental de um assunto.
+
+**Resposta:**
+```json
+{
+  "id": 1,
+  "subjectId": 1,
+  "content": {
+    "nodes": [...],
+    "edges": [...]
+  },
+  "createdAt": "2024-01-15T10:00:00",
+  "updatedAt": "2024-01-15T10:00:00"
+}
+```
+
+---
+
 ## 🔗 Integrations
 
 ### GET `/api/integrations/github/connect`

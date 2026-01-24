@@ -74,12 +74,13 @@ A escolha pelo **Java 21** não foi acidental:
 | **Core** | **Java 21 LTS** | Robustez, tipagem forte e novos recursos de concorrência. |
 | **Framework** | **Spring Boot 3.3** | Produtividade, injeção de dependência e ecossistema maduro. |
 | **Data** | **PostgreSQL 15+** | Confiabilidade ACID e suporte a consultas complexas JSONB. |
-| **ORM** | **Ghibernate / JPA** | Abstração de persistência com otimizações de cache de primeiro nível. |
-| **AI Integration** | **LangChain4j Concepts** | Implementação customizada de padrões de RAG e Chain-of-Thought. |
-| **Resilience** | **Resilience4j** | Tolerância a falhas para integrações externas instáveis. |
+| **ORM** | **Hibernate / JPA** | Abstração de persistência com otimizações de cache de primeiro nível. |
+| **AI Orchestration** | **Factory, Strategy, Facade, Command, Chain** | Padrões de design robustos para gerenciar múltiplos provedores e complexidade. |
+| **AI Providers** | **Groq (Cloud) E Ollama (Local)** | Equilíbrio entre performance (Groq Llama-70B) e privacidade (Ollama Llama-3). |
+| **Web Research** | **Tavily AI** | Pesquisa na web em tempo real para "Grounding" e redução de alucinações. |
+| **AI Concepts** | **RAG, Chain-of-Thought, Agents** | Implementação proprietária de conceitos avançados de LLM. |
+| **Resilience** | **Resilience4j** | Tolerância a falhas (Circuit Breaker, Retry) para APIs instáveis. |
 | **Doc** | **OpenAPI (Swagger)** | Documentação viva e testável dos endpoints REST. |
-| **Build** | **Maven** | Gerenciamento de dependências padrão da indústria. |
-
 ---
 
 ## 🧩 Funcionalidades Chave (Enterprise Features)
@@ -139,12 +140,10 @@ Para recrutadores e engenheiros interessados em mergulhar no código:
 ## 👨‍💻 Autor
 
 **Matheus Dev**  
-*Software Engineer | Java & AI Enthusiast*
 
 Desenvolvido como um projeto de **Alta Complexidade** para demonstrar domínio em arquitetura de software, integração de sistemas e Inteligência Artificial aplicada.
 
 ---
-
-<p align="center">
-  <sub>Construído com ❤️ e muito café.</sub>
-</p>
+<div align="center">
+  Desenvolvido por Matheus
+</div>

@@ -10,6 +10,7 @@
 6. [Padrões de Engenharia de Prompt](#6-padrões-de-engenharia-de-prompt)
 7. [Orquestração Multi-Provider](#7-orquestração-multi-provider)
 8. [Agente de Conhecimento (Writer/Editor)](#8-agente-de-conhecimento-writereditor)
+9. [Conclusão](#9-conclusão)
 
 ---
 
@@ -42,12 +43,12 @@ A arquitetura foi projetada para transformar modelos de linguagem genéricos em 
 - **Ecossistema Python**: Acesso limitado a bibliotecas especializadas (LangChain, LlamaIndex)
 - **Mitigação**: Implementação de padrões de design sólidos em Java que replicam funcionalidades essenciais
 
-### 2.2. Padrão Strategy para Provedores de IA
+### 2.2. Padrões Strategy & Factory para Provedores de IA
 
-**Decisão**: Abstrair a comunicação com APIs de IA através da interface `AIProvider`.
+**Decisão**: Abstrair a comunicação com APIs via `AIProvider` (Strategy) e gerenciar a criação via Spring `Map<String, AIProvider>` (Factory implícito).
 
 **Justificativa**:
-O padrão Strategy torna o sistema **agnóstico ao provedor**, proporcionando:
+O padrão **Strategy** torna o sistema agnóstico ao provedor, enquanto o **Factory** permite a seleção dinâmica baseada em string (configuração ou decisão em tempo de execução).
 
 1. **Flexibilidade Extensível**
    - Troca de provedores sem impacto na lógica de negócio
@@ -153,16 +154,15 @@ flowchart TD
     end
 ```
 
-### 3.1. Fase 1: Roteamento de Tarefas
+### 3.1. Fase 1: Roteamento de Tarefas (Facade Pattern)
 
-O `AIService` atua como roteador principal, identificando o tipo de tarefa solicitada e delegando para o handler apropriado:
+O `AIOrchestrationService` atua como **Facade**, simplificando a complexidade dos múltiplos orquestradores especializados. Ele recebe a requisição e a encaminha para o especialista correto:
 
-- **Análise de Código**: Análise técnica detalhada com múltiplas personas
-- **Review de Portfólio**: Análise profissional de projetos para portfólio
-- **Product Thinking**: Análise estratégica de produto
-- **Edição de Conteúdo**: Manipulação e otimização de texto
-- **OCR/Transcrição**: Extração de texto de imagens
-- **Resposta Genérica**: Respostas contextuais gerais
+- **ChatOrchestrator**: Fluxo conversacional completo (agente + comando)
+- **DocumentAnalysisOrchestrator**: Processamento de arquivos e RAG
+- **QuizGeneratorService**: Geração de avaliações educacionais
+- **RoadmapGeneratorService**: Planejamento de estudos
+- **InternalAnalysisService**: Tarefas de background e análise técnica
 
 ### 3.2. Fase 2: Motor de Contexto
 
@@ -173,14 +173,15 @@ O `AIContextService` coleta e estrutura o contexto necessário para a requisiç�
 - **Histórico de Conversas**: Contexto de interações anteriores
 - **Metadados**: Informações adicionais relevantes ao tipo de tarefa
 
-### 3.3. Fase 3: Motor de Prompt
+### 3.3. Fase 3: Motor de Prompt (Chain of Responsibility)
 
-O `PromptBuilderService` constrói prompts especializados usando técnicas de engenharia de prompt:
+O pipeline de construção de prompts utiliza o padrão **Chain of Responsibility** onde cada `PromptBuildingStep` enriquece o contexto sequencialmente:
 
-- **Atribuição de Persona**: Instruções para a IA assumir papéis específicos
-- **Injeção de Contexto**: Enriquecimento do prompt com dados coletados
-- **Instruções de Formato**: Especificação de formato de saída desejado
-- **Templates Especializados**: Prompts otimizados para cada tipo de tarefa
+1. **ValidationStep**: Valida inputs e regras de negócio
+2. **ContextRetrievalStep**: Busca dados do usuário e domínio
+3. **PromptBuildingStep**: Constrói o texto final usando templates e personas
+4. **ExecutionStep**: Seleciona o provider (via Factory) e executa a chamada
+5. **AuditStep**: Persiste logs e memória assíncrona
 
 ### 3.4. Fase 4: Abstração de Provedor
 
@@ -199,6 +200,76 @@ Integração com provedores externos:
 - **Groq**: Para tarefas que exigem baixa latência e alta throughput
 
 ---
+
+### 3.6. Fluxos Especializados e Web Research
+
+Além do chat padrão, a arquitetura suporta fluxos complexos que integram **pesquisa na web (Tavily)** para garantir factualidade e atualidade.
+
+#### 3.6.1. Integração de Web Research (RAG Dinâmico)
+
+O `WebSearchService` permite que a IA acesse a internet em tempo real. Diferente do RAG tradicional (baseado em arquivos), este é um **Web-RAG**:
+
+1. **Query Generation**: IA analisa a solicitação e gera N queries de busca.
+2. **Search Execution**: `TavilyWebSearchEngine` executa buscas paralelas.
+3. **Content Extraction**: Extrai conteúdo relevante (não apenas metadados).
+4. **Context Injection**: Resultados são injetados no prompt do sistema.
+5. **Citational Response**: IA gera resposta citando as fontes encontradas.
+
+#### 3.6.2. Fluxo: Geração de Quiz (Study Domain)
+
+Gera avaliações baseadas em anotações do usuário + conhecimento atualizado da web.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant QS as QuizService
+    participant WS as WebSearch
+    participant Prompt as PromptBuilder
+    participant AI as AIProvider
+
+    User->>QS: Gerar Quiz (Java 21)
+    
+    par Contexto Interno
+        QS->>QS: Buscar Notas de Estudo
+    and Contexto Externo
+        QS->>WS: Buscar "Novidades Java 21 interview questions"
+        WS-->>QS: Artigos Recentes
+    end
+    
+    QS->>Prompt: Build Prompt (Persona: Professor)
+    Prompt->>Prompt: Injetar Notas + Web Results
+    Prompt->>Prompt: Definir Formato JSON
+    
+    QS->>AI: Generate Quiz (JSON)
+    AI-->>QS: { questions: [...] }
+    QS->>User: Quiz Interativo
+```
+
+#### 3.6.3. Fluxo: Geração de Roadmap (Product Thinking)
+
+Cria planos de estudo estruturados, validando a existência de cursos e materiais na web.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant RS as RoadmapService
+    participant WS as WebSearch
+    participant AI as AIProvider
+
+    User->>RS: Roadmap "DevOps Senior"
+    
+    RS->>AI: Passo 1: Estruturar Tópicos Macro
+    AI-->>RS: Lista de Tópicos
+    
+    loop Para cada Tópico
+        RS->>WS: Buscar "Melhores cursos/livros {topico} 2024"
+        WS-->>RS: Links Reais
+    end
+    
+    RS->>AI: Passo 2: Montar Roadmap Detalhado com Links
+    AI-->>RS: Roadmap JSON Final
+    RS->>User: Roadmap Visual
+```
 
 ## 4. Ciclo de Memória Assíncrono
 
@@ -811,5 +882,6 @@ O sistema representa uma plataforma que agrega valor real ao transformar modelos
 
 - [Resilience4j Documentation](https://resilience4j.readme.io/)
 - [Spring Boot Async](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.task-execution-and-scheduling)
-
 - [Groq API Documentation](https://console.groq.com/docs)
+- [Ollama Documentation](https://ollama.ai/docs)
+- [Prompt Engineering Guide](https://www.promptingguide.ai/)
