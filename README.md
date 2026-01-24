@@ -35,8 +35,8 @@ graph TD
     Orchestrator <-->|RAG + Contexto| Memory
     
     subgraph "AI Providers Layer"
-        Ollama[Ollama<br/>(Local Llama 3 - Privacy)]
-        Groq[Groq Cloud<br/>(Llama 3 70B - Performance)]
+        Ollama["Ollama<br/>(Local Llama 3 - Privacy)"]
+        Groq["Groq Cloud<br/>(Llama 3 70B - Performance)"]
     end
     
     Orchestrator -->|Privacy Optimized| Ollama

@@ -865,7 +865,7 @@ flowchart TD
     GroqClient --> GroqAPI[Groq API<br/>https://api.groq.com]
     GitHubClient --> GitHubAPI[GitHub API<br/>https://api.github.com]
     
-    OllamaClient -.->|Resilience (Retries)| Resilience[Resilience4j]
+    OllamaClient -.->|"Resilience (Retries)"| Resilience[Resilience4j]
     GroqClient -.->|Circuit Breaker<br/>Retry<br/>Rate Limiter<br/>Time Limiter| Resilience
     GitHubClient -.->|Token Refresh<br/>Error Handling| GitHubTokenService[GitHub Token Service]
 ```

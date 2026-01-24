@@ -532,6 +532,8 @@ sequenceDiagram
 **Comportamento**:
 - **Nível de Provider**: Cada `AIProvider` implementa método `fallback()` chamado quando Circuit Breaker abre
 - **Nível de Orquestração**: `GroqOrchestratorService` implementa fallback entre modelos (VERSATILE → INSTANT)
+```mermaid
+flowchart TD
     AIOrch -->|Preferência: Ollama| OllamaProvider[OllamaProvider]
     AIOrch -->|Preferência: Groq| GroqOrch[GroqOrchestratorService]
     
