@@ -163,7 +163,7 @@ public class PromptBuilderService {
         String systemPrompt = """
                 ### PERSONA
                 Você é um auditor técnico. Sua prioridade é a PRECISÃO MATEMÁTICA.
-
+    
                 ### MÉTODO DE RESPOSTA:
                 - Se a pergunta envolver números, localize a faixa exata nas evidências.
                 - Não tente ser "gentil": se o score for alto, a recomendação deve ser severa.

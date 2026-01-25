@@ -12,6 +12,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,10 +28,10 @@ public class ProjectRestController {
 
     private final ProjectService service;
 
-    @Operation(summary = "Get all projects", description = "Returns a list of all projects")
+    @Operation(summary = "Get all projects", description = "Returns a paginated list of all projects")
     @GetMapping
-    public ResponseEntity<List<ProjectResponse>> getAllProjects() {
-        return ResponseEntity.ok(service.getAllProjects());
+    public ResponseEntity<Page<ProjectResponse>> getAllProjects(@ParameterObject Pageable pageable) {
+        return ResponseEntity.ok(service.getAllProjects(pageable));
     }
 
     @Operation(summary = "Get a project by ID", description = "Returns a single project")
@@ -45,7 +48,8 @@ public class ProjectRestController {
 
     @Operation(summary = "Update a project", description = "Updates an existing project")
     @PutMapping("/{projectId}")
-    public ResponseEntity<ProjectResponse> updateProject(@PathVariable Long projectId, @RequestBody @Valid ProjectRequest request) {
+    public ResponseEntity<ProjectResponse> updateProject(@PathVariable Long projectId,
+            @RequestBody @Valid ProjectRequest request) {
         return ResponseEntity.ok(service.updateProject(projectId, request));
     }
 

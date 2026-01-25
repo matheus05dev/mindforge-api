@@ -3,6 +3,7 @@ package com.matheusdev.mindforge.project.mapper;
 import com.matheusdev.mindforge.document.mapper.DocumentMapper;
 import com.matheusdev.mindforge.project.dto.ProjectRequest;
 import com.matheusdev.mindforge.project.dto.ProjectResponse;
+import com.matheusdev.mindforge.project.dto.ProjectSummaryResponse;
 import com.matheusdev.mindforge.project.milestone.dto.MilestoneRequest;
 import com.matheusdev.mindforge.project.milestone.dto.MilestoneResponse;
 import com.matheusdev.mindforge.project.milestone.model.Milestone;
@@ -13,7 +14,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
-@Mapper(componentModel = "spring", uses = {DocumentMapper.class})
+@Mapper(componentModel = "spring", uses = { DocumentMapper.class })
 public interface ProjectMapper {
 
     @Mapping(target = "id", ignore = true)
@@ -26,6 +27,12 @@ public interface ProjectMapper {
     @Mapping(source = "workspace.id", target = "workspaceId")
     @Mapping(source = "githubRepoUrl", target = "githubRepoUrl")
     ProjectResponse toResponse(Project project);
+
+    @Mapping(source = "workspace.id", target = "workspaceId")
+    @Mapping(source = "githubRepoUrl", target = "githubRepoUrl")
+    @Mapping(target = "milestoneCount", expression = "java(project.getMilestones() != null ? project.getMilestones().size() : 0)")
+    @Mapping(target = "documentCount", expression = "java(project.getDocuments() != null ? project.getDocuments().size() : 0)")
+    ProjectSummaryResponse toSummaryResponse(Project project);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "project", ignore = true)

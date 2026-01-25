@@ -5,6 +5,9 @@ import com.matheusdev.mindforge.study.dto.StudySessionRequest;
 import com.matheusdev.mindforge.study.dto.StudySessionResponse;
 import com.matheusdev.mindforge.study.subject.dto.SubjectRequest;
 import com.matheusdev.mindforge.study.subject.dto.SubjectResponse;
+import com.matheusdev.mindforge.study.subject.dto.SubjectSummaryResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import com.matheusdev.mindforge.study.mapper.StudyMapper;
 import com.matheusdev.mindforge.study.model.StudySession;
 import com.matheusdev.mindforge.study.repository.StudySessionRepository;
@@ -26,10 +29,25 @@ public class StudyService {
     private final com.matheusdev.mindforge.workspace.repository.WorkspaceRepository workspaceRepository;
     private final StudyMapper mapper;
 
-    public List<SubjectResponse> getAllSubjects() {
-        return subjectRepository.findAll().stream()
-                .map(mapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<SubjectSummaryResponse> getAllSubjects(Pageable pageable) {
+        return subjectRepository.findAll(pageable)
+                .map(mapper::toSummaryResponse);
+    }
+
+    public Page<SubjectSummaryResponse> getSubjectsByWorkspaceId(Long workspaceId, Pageable pageable) {
+        if (workspaceId == null) {
+            // Se workspaceId não for passado, podemos retornar vazio ou erro.
+            // Para "todos os assuntos", use getAllSubjects (que deveria ser admin only)
+            // Assumindo que o front envia workspaceId no header/path ou o usuário tem um
+            // workspace padrão.
+            throw new IllegalArgumentException("Workspace ID required for pagination");
+        }
+
+        // Garante que o workspace existe (opcional, já que o repositório filtraria)
+        // workspaceRepository.findById(workspaceId);
+
+        return subjectRepository.findByWorkspaceId(workspaceId, pageable)
+                .map(mapper::toSummaryResponse);
     }
 
     public SubjectResponse getSubjectById(Long subjectId) {

@@ -4,6 +4,7 @@ import com.matheusdev.mindforge.exception.BusinessException;
 import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.project.dto.ProjectRequest;
 import com.matheusdev.mindforge.project.dto.ProjectResponse;
+import com.matheusdev.mindforge.project.dto.ProjectSummaryResponse;
 import com.matheusdev.mindforge.project.mapper.ProjectMapper;
 import com.matheusdev.mindforge.project.milestone.dto.MilestoneRequest;
 import com.matheusdev.mindforge.project.milestone.dto.MilestoneResponse;
@@ -15,6 +16,8 @@ import com.matheusdev.mindforge.workspace.model.Workspace;
 import com.matheusdev.mindforge.workspace.model.WorkspaceType;
 import com.matheusdev.mindforge.workspace.service.WorkspaceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,30 +34,21 @@ public class ProjectService {
     private final ProjectMapper mapper;
 
     @Transactional(readOnly = true)
-    public List<ProjectResponse> getAllProjects() {
+    public Page<ProjectResponse> getAllProjects(Pageable pageable) {
         // Este método agora é ambíguo. Para um sistema multi-workspace,
         // deveríamos sempre listar projetos DENTRO de um workspace.
         // Por enquanto, vamos retornar todos, mas isso deve ser revisto.
-        return projectRepository.findAll().stream()
-                .map(mapper::toResponse)
-                .collect(Collectors.toList());
+        return projectRepository.findAll(pageable)
+                .map(mapper::toResponse);
     }
 
     @Transactional(readOnly = true)
-    public List<ProjectResponse> getProjectsByWorkspaceId(Long workspaceId) {
+    public Page<ProjectSummaryResponse> getProjectsByWorkspaceId(Long workspaceId, Pageable pageable) {
         // Garante que o workspace existe antes de buscar os projetos
         workspaceService.findById(workspaceId);
 
-        // Optimized: Fetch in two separate queries to avoid cartesian product
-        // First fetch projects with milestones
-        List<Project> projectsWithMilestones = projectRepository.findAllByWorkspaceIdWithMilestones(workspaceId);
-        // Then fetch projects with documents (Hibernate will merge into existing
-        // entities)
-        projectRepository.findAllByWorkspaceIdWithDocuments(workspaceId);
-
-        return projectsWithMilestones.stream()
-                .map(mapper::toResponse)
-                .collect(Collectors.toList());
+        return projectRepository.findByWorkspaceId(workspaceId, pageable)
+                .map(mapper::toSummaryResponse);
     }
 
     @Transactional(readOnly = true)

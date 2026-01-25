@@ -11,6 +11,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.matheusdev.mindforge.study.subject.dto.SubjectSummaryResponse;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,13 +28,19 @@ public class StudyRestController {
 
     private final StudyService service;
 
-    @Operation(summary = "Get all subjects", description = "Returns a list of all study subjects")
+    @Operation(summary = "Get all subjects", description = "Returns a paginated list of study subjects, optionally filtered by workspace")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved the list")
     })
     @GetMapping("/subjects")
-    public ResponseEntity<List<SubjectResponse>> getAllSubjects() {
-        return ResponseEntity.ok(service.getAllSubjects());
+    public ResponseEntity<Page<SubjectSummaryResponse>> getAllSubjects(
+            @RequestParam(required = false) Long workspaceId,
+            @ParameterObject Pageable pageable) {
+        if (workspaceId != null) {
+            return ResponseEntity.ok(service.getSubjectsByWorkspaceId(workspaceId, pageable));
+        }
+        // Return empty page when no workspaceId is provided
+        return ResponseEntity.ok(Page.empty(pageable));
     }
 
     @Operation(summary = "Get a subject by ID", description = "Returns a single study subject")
@@ -58,7 +68,8 @@ public class StudyRestController {
             @ApiResponse(responseCode = "404", description = "Subject not found")
     })
     @PutMapping("/subjects/{subjectId}")
-    public ResponseEntity<SubjectResponse> updateSubject(@PathVariable Long subjectId, @RequestBody @Valid SubjectRequest request) {
+    public ResponseEntity<SubjectResponse> updateSubject(@PathVariable Long subjectId,
+            @RequestBody @Valid SubjectRequest request) {
         return ResponseEntity.ok(service.updateSubject(subjectId, request));
     }
 

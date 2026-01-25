@@ -6,6 +6,7 @@ import com.matheusdev.mindforge.study.dto.StudySessionResponse;
 import com.matheusdev.mindforge.study.model.StudySession;
 import com.matheusdev.mindforge.study.subject.dto.SubjectRequest;
 import com.matheusdev.mindforge.study.subject.dto.SubjectResponse;
+import com.matheusdev.mindforge.study.subject.dto.SubjectSummaryResponse;
 import com.matheusdev.mindforge.study.subject.model.Subject;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
@@ -13,7 +14,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
-@Mapper(componentModel = "spring", uses = {DocumentMapper.class})
+@Mapper(componentModel = "spring", uses = { DocumentMapper.class })
 public interface StudyMapper {
 
     @Mapping(target = "id", ignore = true)
@@ -22,6 +23,9 @@ public interface StudyMapper {
     Subject toEntity(SubjectRequest request);
 
     SubjectResponse toResponse(Subject subject);
+
+    @Mapping(target = "sessionCount", expression = "java(subject.getStudySessions() != null ? subject.getStudySessions().size() : 0)")
+    SubjectSummaryResponse toSummaryResponse(Subject subject);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "subject", ignore = true)
