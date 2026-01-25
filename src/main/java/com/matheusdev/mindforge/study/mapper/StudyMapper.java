@@ -22,9 +22,12 @@ public interface StudyMapper {
     @Mapping(target = "studySessions", ignore = true)
     Subject toEntity(SubjectRequest request);
 
+    @Mapping(target = "workspaceId", source = "workspace.id")
+    @Mapping(target = "githubRepoUrl", source = "githubRepoUrl")
     SubjectResponse toResponse(Subject subject);
 
     @Mapping(target = "sessionCount", expression = "java(subject.getStudySessions() != null ? subject.getStudySessions().size() : 0)")
+    @Mapping(target = "githubRepoUrl", source = "githubRepoUrl")
     SubjectSummaryResponse toSummaryResponse(Subject subject);
 
     @Mapping(target = "id", ignore = true)

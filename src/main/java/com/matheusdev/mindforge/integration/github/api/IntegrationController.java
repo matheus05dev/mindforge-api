@@ -32,14 +32,19 @@ public class IntegrationController {
 
     @GetMapping("/connect")
     public void connectToGitHub(HttpServletResponse response) throws IOException {
-        // O escopo 'repo' é para acesso a repositórios. Adicione 'read:user' se precisar de dados do perfil.
-        // O parâmetro 'prompt=consent' força o usuário a re-autorizar, o que é útil para garantir a obtenção de um refresh token.
-        String githubAuthUrl = "https://github.com/login/oauth/authorize?client_id=" + githubClientId + "&scope=repo&prompt=consent";
+        // Oescopo 'repo' é para acesso a repositórios. Adicione 'read:user' se
+        // precisar de dados do perfil.
+        // O parâmetro 'prompt=consent' força o usuário a re-autorizar, o que é útil
+        // para garantir a obtenção de um refresh token.
+        String redirectUri = "http://localhost:8080/api/integrations/github/callback";
+        String githubAuthUrl = "https://github.com/login/oauth/authorize?client_id=" + githubClientId
+                + "&scope=repo&prompt=consent&redirect_uri=" + redirectUri;
         response.sendRedirect(githubAuthUrl);
     }
 
     @GetMapping("/callback")
-    public ResponseEntity<String> handleGitHubCallback(@RequestParam("code") Optional<String> code, @RequestParam("error") Optional<String> error) {
+    public void handleGitHubCallback(@RequestParam("code") Optional<String> code,
+            @RequestParam("error") Optional<String> error, HttpServletResponse response) {
         if (error.isPresent()) {
             // Se o usuário negar, o GitHub redireciona com um parâmetro 'error'.
             throw new BusinessException("Acesso negado pelo usuário no GitHub: " + error.get());
@@ -53,14 +58,16 @@ public class IntegrationController {
 
         GitHubAccessTokenResponse tokenResponse = gitHubTokenService.exchangeCodeForToken(code.get());
 
-        UserIntegration integration = userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
+        UserIntegration integration = userIntegrationRepository
+                .findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElse(new UserIntegration());
 
         integration.setUserId(userId);
         integration.setProvider(UserIntegration.Provider.GITHUB);
         integration.setAccessToken(tokenResponse.getAccessToken());
-        
-        // O GitHub só retorna um novo refresh token na primeira autorização ou se a anterior for revogada.
+
+        // O GitHub só retorna um novo refresh token na primeira autorização ou se a
+        // anterior for revogada.
         // Portanto, só atualizamos o refresh token se um novo for fornecido.
         if (tokenResponse.getRefreshToken() != null) {
             integration.setRefreshToken(tokenResponse.getRefreshToken());
@@ -68,6 +75,11 @@ public class IntegrationController {
 
         userIntegrationRepository.save(integration);
 
-        return ResponseEntity.ok("Conta do GitHub conectada e token salvo com sucesso!");
+        try {
+            response.sendRedirect("http://localhost:3000/settings/integrations?success=true");
+        } catch (IOException e) {
+            throw new BusinessException("Erro ao redirecionar para o frontend: " + e.getMessage());
+        }
     }
+
 }

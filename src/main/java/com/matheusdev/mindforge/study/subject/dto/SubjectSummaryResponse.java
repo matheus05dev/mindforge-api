@@ -8,6 +8,7 @@ public class SubjectSummaryResponse {
     private Long id;
     private String name;
     private String description;
-    private ProficiencyLevel proficiencyLevel;
-    private int sessionCount;
+    private String proficiencyLevel;
+    private String githubRepoUrl;
+    private Integer sessionCount;
 }

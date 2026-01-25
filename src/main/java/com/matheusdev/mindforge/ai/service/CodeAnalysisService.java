@@ -52,7 +52,8 @@ public class CodeAnalysisService {
     public ChatMessage analyzeCodeForProficiency(CodeAnalysisRequest request) throws IOException {
         final Long userId = 1L; // Provisório
         Subject subject = subjectRepository.findById(request.getSubjectId())
-                .orElseThrow(() -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + request.getSubjectId()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Assunto de estudo não encontrado com o id: " + request.getSubjectId()));
         String code = getCodeFromRequest(request);
         UserProfileAI userProfile = memoryService.getProfile(userId);
 
@@ -78,10 +79,26 @@ public class CodeAnalysisService {
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
         try {
-            String defaultProvider = "ollamaProvider";
-            AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(), null, defaultProvider);
-            
-            AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(providerRequest.toChatRequest(defaultProvider)).get();
+            // Tenta usar GROQ primeiro pela velocidade
+            String primaryProvider = "groqProvider";
+            String fallbackProvider = "ollamaProvider";
+
+            AIProviderResponse aiResponse;
+            try {
+                AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(),
+                        null, primaryProvider);
+                aiResponse = aiOrchestrationService
+                        .handleChatInteraction(providerRequest.toChatRequest(primaryProvider)).get();
+                if (aiResponse.getError() != null) {
+                    throw new BusinessException("Erro no provedor primário: " + aiResponse.getError());
+                }
+            } catch (Exception e) {
+                // Fallback para Ollama
+                AIProviderRequest providerRequest = new AIProviderRequest(prompts.userPrompt(), prompts.systemPrompt(),
+                        null, fallbackProvider);
+                aiResponse = aiOrchestrationService
+                        .handleChatInteraction(providerRequest.toChatRequest(fallbackProvider)).get();
+            }
 
             if (aiResponse.getError() != null) {
                 throw new BusinessException("Erro no serviço de IA: " + aiResponse.getError());
@@ -105,7 +122,8 @@ public class CodeAnalysisService {
     public ChatMessage analyzeGitHubFile(GitHubFileAnalysisRequest request) throws IOException {
         final Long userId = 1L; // Provisório
         Project project = projectRepository.findById(request.getProjectId())
-                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado com o id: " + request.getProjectId()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Projeto não encontrado com o id: " + request.getProjectId()));
 
         userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub."));
@@ -121,7 +139,8 @@ public class CodeAnalysisService {
         String fileContent = gitHubClient.getFileContent(userId, owner, repoName, request.getFilePath());
 
         Subject subject = subjectRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum assunto de estudo encontrado para contextualizar a análise."));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Nenhum assunto de estudo encontrado para contextualizar a análise."));
         CodeAnalysisRequest internalRequest = new CodeAnalysisRequest();
         internalRequest.setSubjectId(subject.getId());
         internalRequest.setCodeToAnalyze(fileContent);
@@ -135,7 +154,8 @@ public class CodeAnalysisService {
         }
         if (request.getDocumentId() != null) {
             Document doc = documentRepository.findById(request.getDocumentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Documento não encontrado com o id: " + request.getDocumentId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Documento não encontrado com o id: " + request.getDocumentId()));
             Resource resource = fileStorageService.loadFileAsResource(doc.getFileName());
             return new String(Files.readAllBytes(resource.getFile().toPath()));
         }

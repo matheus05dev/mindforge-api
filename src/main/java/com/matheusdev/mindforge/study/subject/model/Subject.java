@@ -31,6 +31,8 @@ public class Subject {
 
     private String description;
 
+    private String githubRepoUrl;
+
     @Enumerated(EnumType.STRING)
     private ProficiencyLevel proficiencyLevel;
 

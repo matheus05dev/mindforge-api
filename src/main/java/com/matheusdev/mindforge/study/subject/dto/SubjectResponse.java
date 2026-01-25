@@ -10,6 +10,8 @@ public class SubjectResponse {
     private Long id;
     private String name;
     private String description;
-    private ProficiencyLevel proficiencyLevel;
+    private String proficiencyLevel;
+    private String githubRepoUrl;
+    private Long workspaceId;
     private List<StudySessionResponse> studySessions;
 }
