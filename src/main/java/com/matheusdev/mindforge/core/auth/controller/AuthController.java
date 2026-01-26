@@ -39,6 +39,6 @@ public class AuthController {
     public ResponseEntity<?> changePassword(
             @RequestBody com.matheusdev.mindforge.core.auth.dto.ChangePasswordRequest request) {
         service.changePassword(request, service.getCurrentUser());
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 }
