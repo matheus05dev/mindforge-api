@@ -1261,8 +1261,13 @@ Conta do GitHub conectada e token salvo com sucesso!
 
 ## 📌 Notas Importantes
 
-### Autenticação
-Atualmente não há sistema de autenticação implementado. O `userId` está hardcoded como `1L` na integração do GitHub.
+### Autenticação & Multi-Tenancy
+A API utiliza **JWT (JSON Web Token)** para autenticação e autorização.
+- Todas as requisições protegidas devem incluir o header `Authorization: Bearer <token>`.
+- O token JWT deve conter o claim `tenantId`, que é utilizado para isolar logicamente os dados de cada inquilino.
+- O inquilino é resolvido automaticamente pelo `TenantFilter` no backend.
+
+Para fins de teste e desenvolvimento, algumas rotas OAuth ainda podem usar o `userId` hardcoded como `1L`, mas o sistema está preparado para resolução dinâmica via token.
 
 ### Formato de Data
 - **Datas simples:** `"2024-12-31"` (formato ISO: YYYY-MM-DD)

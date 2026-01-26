@@ -84,7 +84,20 @@ O padrão **Strategy** torna o sistema agnóstico ao provedor, enquanto o **Fact
 
 ---
 
-## 3. Arquitetura Dinâmica: Fluxo de Requisições
+## 3. Isolamento Multi-Tenant em IA
+
+Diferente de sistemas de IA tradicionais, o MindForge garante isolamento total de contextos e dados entre inquilinos (tenants).
+
+### 3.1. Propagação de Contexto
+O `tenantId` extraído do JWT é armazenado no `TenantContext` (ThreadLocal) e propagado para todas as camadas de orquestração de IA:
+
+- **Isolamento de Memória**: O `MemoryService` filtra e persiste perfis de usuário (`UserProfileAI`) garantindo que a memória de um inquilino nunca vaze para outro.
+- **RAG Isolado**: Durante a busca semântica ou recuperação de notas, as consultas ao banco de dados são filtradas automaticamente pelo `tenantId`, garantindo que a IA só "veja" os documentos pertencentes ao inquilino solicitante.
+- **Contexto de Sessão**: As sessões de chat (`ChatSession`) são vinculadas ao tenant, permitindo histórico isolado e seguro.
+
+---
+
+## 4. Arquitetura Dinâmica: Fluxo de Requisições
 
 O diagrama abaixo ilustra o fluxo completo de uma requisição de análise de código, demonstrando a colaboração entre todos os componentes do sistema.
 

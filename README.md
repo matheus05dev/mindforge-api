@@ -15,6 +15,9 @@ O **MindForge** não é apenas uma API; é uma demonstração de **engenharia de
 
 O diferencial técnico reside na **capacidade de manter o contexto** (stateful conversation memory) e na **especialização dinâmica de agentes**, permitindo que LLMs genéricos atuem como especialistas em domínios específicos (Mentoria, Análise de Código, Recrutamento Técnico) com alta precisão.
 
+> [!IMPORTANT]
+> **Deployment & Infraestrutura**: O MindForge foi arquitetado para ser *SaaS-Ready*, suportando múltiplos inquilinos de forma isolada. Atualmente, a aplicação é executada localmente para tirar proveito da integração nativa com **LLMs locais (via Ollama)**. Esta escolha técnica garante máxima resiliência, latência reduzida para RAG e total privacidade dos dados, superando as limitações rídicas de recursos encontradas em plataformas *free-tier* convencionais. A transição para um ambiente de nuvem escalável é o próximo passo natural do roadmap.
+
 ---
 
 ## 🏗️ Visão Arquitetural
@@ -65,6 +68,12 @@ A escolha pelo **Java 21** não foi acidental:
 - **Records**: Modelagem de dados imutáveis para DTOs e eventos de domínio.
 - **Pattern Matching**: Lógica de negócios expressiva e menos propensa a erros.
 
+### 🏢 Arquitetura Multi-Tenant
+Suporte nativo a SaaS B2B com **Multi-Inquilino (Multi-Tenancy)**:
+- **Shared Database, Shared Schema**: Isolamento lógico de dados via Discriminator Column (`tenant_id`).
+- **Resolução Automática**: Um filtro de segurança resolve o tenant via JWT e o injeta no contexto da thread (`ThreadLocal`).
+- **Segurança Transparente**: Entity Listeners garantem que todo dado persistido pertença ao inquilino correto, evitando vazamento de dados.
+
 ---
 
 ## 🛠️ Tech Stack & Decisões Técnicas
@@ -76,6 +85,7 @@ A escolha pelo **Java 21** não foi acidental:
 | **Data** | **PostgreSQL 15+** | Confiabilidade ACID e suporte a consultas complexas JSONB. |
 | **ORM** | **Hibernate / JPA** | Abstração de persistência com otimizações de cache de primeiro nível. |
 | **AI Orchestration** | **Factory, Strategy, Facade, Command, Chain** | Padrões de design robustos para gerenciar múltiplos provedores e complexidade. |
+| **Multi-Tenancy** | **Discriminator / Filter** | Suporte SaaS com isolamento lógico e resolução via JWT. |
 | **AI Providers** | **Groq (Cloud) E Ollama (Local)** | Equilíbrio entre performance (Groq Llama-70B) e privacidade (Ollama Llama-3). |
 | **Web Research** | **Tavily AI** | Pesquisa na web em tempo real para "Grounding" e redução de alucinações. |
 | **AI Concepts** | **RAG, Chain-of-Thought, Agents** | Implementação proprietária de conceitos avançados de LLM. |
@@ -83,25 +93,28 @@ A escolha pelo **Java 21** não foi acidental:
 | **Doc** | **OpenAPI (Swagger)** | Documentação viva e testável dos endpoints REST. |
 ---
 
-## 🧩 Funcionalidades Chave (Enterprise Features)
+## 🧩 Funcionalidades Principais (Product Features)
 
-### 1. Sistema RAG (Retrieval-Augmented Generation)
-Implementação de um pipeline RAG para enriquecer as respostas da IA com dados proprietários do usuário (anotações, documentos de projeto), reduzindo alucinações e aumentando a relevância contextual.
+### 📚 Ecossistema de Aprendizado Inteligente
+- **Roadmaps de Estudo Dinâmicos**: A IA gera cronogramas semanais personalizados com tópicos e recursos curados da web (vídeos, documentação oficial) baseados no seu nível.
+- **Mapas Mentais Interativos**: Visualize conexões complexas entre conceitos. Transforme anotações em diagramas dinâmicos para facilitar a retenção.
+- **Geração de Quizzes com IA**: Teste seus conhecimentos com quizzes gerados automaticamente a partir de suas próprias notas e conteúdos atualizados da internet.
+- **Gestão de Sessões de Estudo**: Rastreie seu tempo e progresso com um timer integrado e registro automático de métricas de proficiência.
 
-### 2. Ciclo de Memória Assíncrono
-Diferente de chats stateless, o MindForge mantém uma **memória de longo prazo**. O sistema analisa interações passadas em background para atualizar o `UserProfileAI`, ajustando o tom e estilo de resposta automaticamente.
+### 💻 Orquestração de IA & Produtividade
+- **Mentoria com Memória Contextual (RAG)**: Um assistente que aprende com você. Utilizando *Retrieval-Augmented Generation*, a IA acessa seu histórico e notas para dar respostas precisas e personalizadas.
+- **Agente de Edição Colaborativa**: Solicite melhorias em seus documentos e visualize as mudanças via **JSON Diffs**. Aceite ou rejeite sugestões da IA com um clique.
+- **Análise de Documentos & OCR**: Faça upload de PDFs, imagens ou DOCX. O sistema transcreve conteúdos (OCR) e analisa documentos extensos usando a técnica **Map-Reduce** para garantir precisão em arquivos grandes.
+- **Multi-Provedor Inteligente**: Seleção dinâmica entre **Ollama (Local/Privacidade)** e **Groq (Nuvem/Alta Velocidade)**, garantindo resiliência e o melhor custo-benefício.
 
-### 3. Personas Dinâmicas
-O sistema injeta "System Prompts" refinados em tempo real para alterar o comportamento da IA:
-- **Tech Recruiter**: Analisa JSONs de projetos GitHub e simula feedbacks de entrevistas técnicas.
-- **Socratic Tutor**: Ao invés de dar respostas, guia o usuário através de perguntas para estimular o aprendizado.
-- **Senior Architect**: Foca em trade-offs de design e padrões de projeto.
+### 🛠️ Gestão de Engenharia & Software
+- **Integração Profunda com GitHub**: Conecte repositórios, navegue na árvore de arquivos e solicite análises de código de arquivos específicos com personas de *Senior Architect* ou *Tech Recruiter*.
+- **Tomada de Decisão Estratégica**: Registre e proponha decisões técnicas fundamentadas. O sistema ajuda a pesar trade-offs e mantém um registro histórico do porquê de cada escolha arquitetural.
+- **Quadros Kanban Evoluídos**: Organize tarefas de estudo e código em fluxos visuais. Vincule tarefas a assuntos específicos para manter a rastreabilidade total.
+- **Workspaces Isolados**: Separe contextos de vida acadêmica, profissional e pessoal em espaços dedicados, mantendo a organização em nível corporativo.
 
-### 4. Agente de Conhecimento (Writer/Editor)
-Além de chat, a IA atua como um **agente ativo** na edição de documentos. Utilizando o "Agent Mode", o sistema:
-1. Analisa o conteúdo atual do `KnowledgeItem`.
-2. Propõe mudanças estruturais ou correções cirúrgicas via geração de **JSON Diffs**.
-3. Aguarda aprovação do usuário para aplicar as mudanças (Human-in-the-loop).
+### 🏢 Plataforma SaaS Ready
+- **Arquitetura Multi-Tenant**: Isolamento lógico robusto de dados, permitindo que múltiplos usuários ou empresas utilizem a plataforma de forma segura e independente no mesmo banco de dados.
 
 ---
 

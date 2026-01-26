@@ -7,12 +7,13 @@
 3. [Padrão AI Provider e Orquestração](#3-padrão-ai-provider-e-orquestração)
 4. [Engenharia de Prompt e Memória](#4-engenharia-de-prompt-e-memória)
 5. [Bounded Contexts e Domínios de Negócio](#5-bounded-contexts-e-domínios-de-negócio)
-6. [Padrões de Design e Suas Necessidades Reais](#6-padrões-de-design-e-suas-necessidades-reais)
-7. [Justificativas Tecnológicas e Trade-offs](#7-justificativas-tecnológicas-e-trade-offs)
-8. [Conexões com APIs Externas e Integrações](#8-conexões-com-apis-externas-e-integrações)
-9. [Modelagem de Dados e Esquema do Banco](#9-modelagem-de-dados-e-esquema-do-banco)
-10. [Trade-offs Atuais](#10-trade-offs-atuais)
-11. [Conclusão](#11-conclusão)
+6. [Arquitetura Multi-Tenant](#6-arquitetura-multi-tenant)
+7. [Padrões de Design e Suas Necessidades Reais](#7-padrões-de-design-e-suas-necessidades-reais)
+8. [Justificativas Tecnológicas e Trade-offs](#8-justificativas-tecnológicas-e-trade-offs)
+9. [Conexões com APIs Externas e Integrações](#9-conexões-com-apis-externas-e-integrações)
+10. [Modelagem de Dados e Esquema do Banco](#10-modelagem-de-dados-e-esquema-do-banco)
+11. [Trade-offs Atuais](#11-trade-offs-atuais)
+12. [Conclusão](#12-conclusão)
 
 ---
 
@@ -313,7 +314,44 @@ com.matheusdev.mindforge/
 
 ---
 
-## 6. Padrões de Design e Suas Necessidades Reais
+
+---
+
+## 6. Arquitetura Multi-Tenant
+
+O MindForge suporta múltiplos inquilinos (tenants) através de uma arquitetura de banco de dados compartilhado com isolamento lógico (Shared Database, Shared Schema).
+
+### 6.1. Modelo de Isolamento
+Utilizamos a abordagem de **Discriminator Column**. Todas as tabelas sensíveis ao inquilino possuem uma coluna `tenant_id` (chave estrangeira para a tabela `tenants`).
+
+- **Isolamento de Dados**: Garante que o Usuário A do Tenant X não acesse dados do Tenant Y.
+- **Eficiência**: Simplifica a infraestrutura (um único banco de dados, migrações unificadas).
+
+### 6.2. Resolução de Tenant
+O tenant é identificado a cada requisição HTTP através do Token JWT.
+
+1. **Authentication**: O usuário faz login e recebe um JWT.
+2. **Token claim**: O JWT contém o claim `tenantId`.
+3. **TenantFilter**: Um filtro intercepta a requisição, extrai o `tenantId` e o armazena no `TenantContext` (ThreadLocal).
+
+### 6.3. Aplicação Automática (TenantEntityListener)
+Para garantir que todo dado criado seja associado ao tenant correto sem repetição de código, utilizamos JPA Entity Listeners.
+
+```java
+@PrePersist
+public void setTenant(Object entity) {
+    Long tenantId = TenantContext.getTenantId();
+    if (tenantId != null && entity.getTenant() == null) {
+        entity.setTenant(new Tenant(tenantId));
+    }
+}
+```
+
+Isso blinda a camada de serviço de ter que setar manualmente o tenant em cada operação de escrita.
+
+---
+
+## 7. Padrões de Design e Suas Necessidades Reais
 
 A arquitetura do MindForge não foi construída seguindo padrões "porque sim" ou para demonstrar conhecimento teórico. Cada padrão implementado resolve um **problema concreto** que surgiu das necessidades do domínio de IA e produtividade. Esta seção explica as decisões arquiteturais baseadas em necessidades reais.
 
@@ -763,7 +801,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 ---
 
-## 7. Justificativas Tecnológicas e Trade-offs
+## 8. Justificativas Tecnológicas e Trade-offs
 
 ### 7.1. Escolha da Stack Java/Spring Boot
 
@@ -849,7 +887,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 ---
 
-## 8. Conexões com APIs Externas e Integrações
+## 9. Conexões com APIs Externas e Integrações
 
 O MindForge integra-se com múltiplas APIs externas para fornecer funcionalidades avançadas. Cada integração implementa padrões de resiliência e tratamento de erros adequados.
 
@@ -1071,7 +1109,7 @@ public RestTemplate restTemplate(RestTemplateBuilder builder) {
 
 ---
 
-## 9. Modelagem de Dados e Esquema do Banco
+## 10. Modelagem de Dados e Esquema do Banco
 
 O MindForge utiliza **PostgreSQL** como banco de dados relacional, com mapeamento objeto-relacional via **JPA/Hibernate**.
 
@@ -1271,7 +1309,7 @@ erDiagram
 
 ---
 
-## 10. Trade-offs Atuais
+## 11. Trade-offs Atuais
 
 ### 10.1. Autenticação e Perfil de Usuário (Trade-offs Atuais)
 
@@ -1290,7 +1328,7 @@ O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade
 
 ---
 
-## 11. Conclusão
+## 12. Conclusão
 
 Este documento serve como um guia abrangente para a arquitetura do MindForge, detalhando suas escolhas de design, fluxos de dados, padrões implementados e o caminho para sua evolução.
 
