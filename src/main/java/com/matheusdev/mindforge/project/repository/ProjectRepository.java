@@ -18,6 +18,15 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     List<Project> findByWorkspaceId(Long workspaceId);
 
+    // Tenant-aware queries
+    Page<Project> findByTenantId(Long tenantId, Pageable pageable);
+
+    List<Project> findByTenantId(Long tenantId);
+
+    Optional<Project> findByIdAndTenantId(Long id, Long tenantId);
+
+    Page<Project> findByWorkspaceIdAndTenantId(Long workspaceId, Long tenantId, Pageable pageable);
+
     // Optimized: Using EntityGraph to avoid cartesian product from multiple LEFT
     // JOIN FETCH
     // Fetch milestones and documents in separate queries to prevent multiplication

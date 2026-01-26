@@ -35,19 +35,25 @@ public class ProjectService {
 
     @Transactional(readOnly = true)
     public Page<ProjectResponse> getAllProjects(Pageable pageable) {
-        // Este método agora é ambíguo. Para um sistema multi-workspace,
-        // deveríamos sempre listar projetos DENTRO de um workspace.
-        // Por enquanto, vamos retornar todos, mas isso deve ser revisto.
-        return projectRepository.findAll(pageable)
+        // Get current tenant from context
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        if (tenantId == null) {
+            throw new BusinessException("Tenant context not set");
+        }
+
+        return projectRepository.findByTenantId(tenantId, pageable)
                 .map(mapper::toResponse);
     }
 
     @Transactional(readOnly = true)
     public Page<ProjectSummaryResponse> getProjectsByWorkspaceId(Long workspaceId, Pageable pageable) {
+        // Get current tenant
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+
         // Garante que o workspace existe antes de buscar os projetos
         workspaceService.findById(workspaceId);
 
-        return projectRepository.findByWorkspaceId(workspaceId, pageable)
+        return projectRepository.findByWorkspaceIdAndTenantId(workspaceId, tenantId, pageable)
                 .map(mapper::toSummaryResponse);
     }
 

@@ -29,29 +29,35 @@ public class StudyService {
     private final com.matheusdev.mindforge.workspace.repository.WorkspaceRepository workspaceRepository;
     private final StudyMapper mapper;
 
-    public Page<SubjectSummaryResponse> getAllSubjects(Pageable pageable) {
-        return subjectRepository.findAll(pageable)
-                .map(mapper::toSummaryResponse);
+    @Transactional(readOnly = true)
+    public Page<SubjectResponse> getAllSubjects(Pageable pageable, Long workspaceId) {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        if (tenantId == null) {
+            throw new RuntimeException("Tenant context not set");
+        }
+
+        if (workspaceId != null) {
+            return subjectRepository.findByWorkspaceIdAndTenantId(workspaceId, tenantId, pageable)
+                    .map(mapper::toResponse);
+        }
+
+        return subjectRepository.findByTenantId(tenantId, pageable)
+                .map(mapper::toResponse);
     }
 
     public Page<SubjectSummaryResponse> getSubjectsByWorkspaceId(Long workspaceId, Pageable pageable) {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
         if (workspaceId == null) {
-            // Se workspaceId não for passado, podemos retornar vazio ou erro.
-            // Para "todos os assuntos", use getAllSubjects (que deveria ser admin only)
-            // Assumindo que o front envia workspaceId no header/path ou o usuário tem um
-            // workspace padrão.
             throw new IllegalArgumentException("Workspace ID required for pagination");
         }
 
-        // Garante que o workspace existe (opcional, já que o repositório filtraria)
-        // workspaceRepository.findById(workspaceId);
-
-        return subjectRepository.findByWorkspaceId(workspaceId, pageable)
+        return subjectRepository.findByWorkspaceIdAndTenantId(workspaceId, tenantId, pageable)
                 .map(mapper::toSummaryResponse);
     }
 
     public SubjectResponse getSubjectById(Long subjectId) {
-        Subject subject = subjectRepository.findById(subjectId)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        Subject subject = subjectRepository.findByIdAndTenantId(subjectId, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
         return mapper.toResponse(subject);
@@ -79,7 +85,8 @@ public class StudyService {
 
     @Transactional
     public SubjectResponse updateSubject(Long subjectId, SubjectRequest request) {
-        Subject subject = subjectRepository.findById(subjectId)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        Subject subject = subjectRepository.findByIdAndTenantId(subjectId, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
 
@@ -89,15 +96,17 @@ public class StudyService {
     }
 
     public void deleteSubject(Long subjectId) {
-        if (!subjectRepository.existsById(subjectId)) {
-            throw new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId);
-        }
-        subjectRepository.deleteById(subjectId);
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        Subject subject = subjectRepository.findByIdAndTenantId(subjectId, tenantId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
+        subjectRepository.delete(subject); // Use delete(entity) instead of deleteById
     }
 
     @Transactional
     public StudySessionResponse logSession(Long subjectId, StudySessionRequest request) {
-        Subject subject = subjectRepository.findById(subjectId)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        Subject subject = subjectRepository.findByIdAndTenantId(subjectId, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
 
@@ -110,7 +119,8 @@ public class StudyService {
 
     @Transactional
     public StudySessionResponse updateSession(Long sessionId, StudySessionRequest request) {
-        StudySession session = studySessionRepository.findById(sessionId)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        StudySession session = studySessionRepository.findByIdAndTenantId(sessionId, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId));
 
@@ -120,16 +130,34 @@ public class StudyService {
     }
 
     public void deleteSession(Long sessionId) {
-        if (!studySessionRepository.existsById(sessionId)) {
-            throw new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId);
-        }
-        studySessionRepository.deleteById(sessionId);
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        StudySession session = studySessionRepository.findByIdAndTenantId(sessionId, tenantId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId));
+
+        studySessionRepository.delete(session);
     }
 
     public List<StudySessionResponse> getSessionsBySubject(Long subjectId) {
-        Subject subject = subjectRepository.findById(subjectId)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId));
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        // verifica se o assunto pertence ao tenant
+        if (!subjectRepository.findByIdAndTenantId(subjectId, tenantId).isPresent()) {
+            throw new ResourceNotFoundException("Assunto de estudo não encontrado com o id: " + subjectId);
+        }
+
+        // assumindo que as sessões são filtradas pelo assunto que já foi validado,
+        // mas robustamente deveríamos filtrar as sessões pelo tenant também se o
+        // repositório suportasse.
+        // studySessionRepository.findBySubjectIdAndTenantId...
+        // No entanto, o repositório só tem findBySubjectId. Como o assunto foi validado
+        // acima,
+        // efetivamente estamos seguros SE as sessões não podem se mover entre
+        // assuntos/tenants.
+        // Melhor:
+        // return studySessionRepository.findBySubjectId(subjectId).stream()...
+        // O passo anterior implementou `findByTenantId` no repositório mas não
+        // `findBySubjectIdAndTenantId`.
+        // Vamos confiar na verificação de propriedade do assunto por enquanto.
 
         return studySessionRepository.findBySubjectId(subjectId).stream()
                 .map(mapper::toResponse)
@@ -137,7 +165,8 @@ public class StudyService {
     }
 
     public StudySessionResponse getSessionById(Long sessionId) {
-        StudySession session = studySessionRepository.findById(sessionId)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        StudySession session = studySessionRepository.findByIdAndTenantId(sessionId, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Sessão de estudo não encontrada com o id: " + sessionId));
         return mapper.toResponse(session);

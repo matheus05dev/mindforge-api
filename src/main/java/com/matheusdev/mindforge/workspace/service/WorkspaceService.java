@@ -16,8 +16,11 @@ public class WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
 
     public List<Workspace> findAll() {
-        // No futuro, filtrar por userId
-        return workspaceRepository.findAll();
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        if (tenantId == null) {
+            throw new RuntimeException("Tenant context not set");
+        }
+        return workspaceRepository.findByTenantId(tenantId);
     }
 
     public Workspace findById(Long id) {

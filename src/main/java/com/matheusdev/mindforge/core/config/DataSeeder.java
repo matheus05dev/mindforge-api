@@ -1,0 +1,85 @@
+package com.matheusdev.mindforge.core.config;
+
+import com.matheusdev.mindforge.core.tenant.context.TenantContext;
+import com.matheusdev.mindforge.core.tenant.domain.Tenant;
+import com.matheusdev.mindforge.core.tenant.domain.TenantPlan;
+import com.matheusdev.mindforge.core.tenant.repository.TenantRepository;
+import com.matheusdev.mindforge.workspace.model.Workspace;
+import com.matheusdev.mindforge.workspace.model.WorkspaceType;
+import com.matheusdev.mindforge.workspace.repository.WorkspaceRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class DataSeeder implements CommandLineRunner {
+
+    private final TenantRepository tenantRepository;
+    private final WorkspaceRepository workspaceRepository;
+
+    @Override
+    @Transactional
+    public void run(String... args) {
+        log.info("Starting Java Data Seeding...");
+
+        // 1. Create Default Tenant
+        Tenant defaultTenant = tenantRepository.findBySlug("default")
+                .orElseGet(() -> {
+                    log.info("Creating default tenant...");
+                    Tenant tenant = new Tenant();
+                    tenant.setId(1L); // Force ID 1
+                    tenant.setName("Default Organization");
+                    tenant.setSlug("default");
+                    tenant.setActive(true);
+                    tenant.setPlan(TenantPlan.ENTERPRISE);
+                    tenant.setMaxUsers(999);
+                    return tenantRepository.save(tenant);
+                });
+
+        // Set context for workspace creation
+        TenantContext.setTenantId(defaultTenant.getId());
+
+        try {
+            // 2. Create Default Workspaces with specific IDs
+            seedWorkspacesForTenant(defaultTenant);
+
+        } finally {
+            TenantContext.clear();
+        }
+
+        log.info("Java Data Seeding Completed.");
+    }
+
+    public void seedWorkspacesForTenant(Tenant tenant) {
+        // IDs 1, 2, 3 are reserved for the default tenant (ID 1)
+        // For other tenants, let the database generate IDs
+        boolean isDefaultTenant = tenant.getId() == 1L;
+
+        createWorkspaceIfMissing(isDefaultTenant ? 1L : null, "Geral", "Visão geral de tudo", WorkspaceType.GENERIC,
+                tenant);
+        createWorkspaceIfMissing(isDefaultTenant ? 2L : null, "Estudos", "Gestão de estudos e aprendizado",
+                WorkspaceType.STUDY, tenant);
+        createWorkspaceIfMissing(isDefaultTenant ? 3L : null, "Projetos", "Gestão de projetos e tarefas",
+                WorkspaceType.PROJECT, tenant);
+    }
+
+    private void createWorkspaceIfMissing(Long forcedId, String name, String description, WorkspaceType type,
+            Tenant tenant) {
+        if (!workspaceRepository.existsByNameAndTenantId(name, tenant.getId())) {
+            log.info("Creating workspace: {} for tenant {}", name, tenant.getName());
+            Workspace workspace = new Workspace();
+            if (forcedId != null) {
+                workspace.setId(forcedId);
+            }
+            workspace.setName(name);
+            workspace.setDescription(description);
+            workspace.setType(type);
+            workspace.setTenant(tenant);
+            workspaceRepository.save(workspace);
+        }
+    }
+}

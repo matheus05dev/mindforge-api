@@ -24,6 +24,10 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
+    public Long extractTenantId(String token) {
+        return extractClaim(token, claims -> claims.get("tenant_id", Long.class));
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
@@ -41,6 +45,12 @@ public class JwtService {
                 .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24)) // 24 hours
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    public String generateToken(UserDetails userDetails, Long tenantId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("tenant_id", tenantId);
+        return generateToken(claims, userDetails);
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {

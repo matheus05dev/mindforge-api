@@ -41,9 +41,17 @@ public class DecisionService {
 
     @Transactional(readOnly = true)
     public List<DecisionResponse> getDecisionsByProject(Long projectId) {
-        if (!projectRepository.existsById(projectId)) {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        // Validate project ownership
+        // Using findById and explicit check because findByIdAndTenantId might return
+        // Optional<Project> or be missing
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado"));
+
+        if (!project.getTenant().getId().equals(tenantId)) {
             throw new ResourceNotFoundException("Projeto não encontrado");
         }
+
         return decisionRepository.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -51,8 +59,13 @@ public class DecisionService {
 
     @Transactional
     public DecisionResponse createDecision(DecisionRequest request) {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
         Project project = projectRepository.findById(request.getProjectId())
                 .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado"));
+
+        if (!project.getTenant().getId().equals(tenantId)) {
+            throw new ResourceNotFoundException("Projeto não encontrado");
+        }
 
         DecisionRecord record = new DecisionRecord();
         record.setProject(project);
@@ -69,7 +82,8 @@ public class DecisionService {
 
     @Transactional
     public DecisionResponse updateDecision(Long id, DecisionRequest request) {
-        DecisionRecord record = decisionRepository.findById(id)
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        DecisionRecord record = decisionRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Decisão não encontrada"));
 
         record.setTitle(request.getTitle());

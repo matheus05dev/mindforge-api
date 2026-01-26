@@ -26,18 +26,22 @@ public class Document {
     private String filePath;
     private LocalDateTime uploadDate;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = true)
     private Project project;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "kanban_task_id", nullable = true)
     private KanbanTask kanbanTask;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "knowledge_item_id", nullable = true)
     private KnowledgeItem knowledgeItem;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "study_session_id", nullable = true)
     private StudySession studySession;

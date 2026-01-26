@@ -16,4 +16,13 @@ public interface SubjectRepository extends JpaRepository<Subject, Long> {
     List<Subject> findByWorkspaceId(Long workspaceId);
 
     Page<Subject> findByWorkspaceId(Long workspaceId, Pageable pageable);
+
+    // Tenant-aware queries
+    Page<Subject> findByTenantId(Long tenantId, Pageable pageable);
+
+    List<Subject> findByTenantId(Long tenantId);
+
+    java.util.Optional<Subject> findByIdAndTenantId(Long id, Long tenantId);
+
+    Page<Subject> findByWorkspaceIdAndTenantId(Long workspaceId, Long tenantId, Pageable pageable);
 }

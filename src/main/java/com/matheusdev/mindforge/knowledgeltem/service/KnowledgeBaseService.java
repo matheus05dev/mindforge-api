@@ -4,6 +4,7 @@ import com.matheusdev.mindforge.exception.ResourceNotFoundException;
 import com.matheusdev.mindforge.knowledgeltem.model.KnowledgeItem;
 import com.matheusdev.mindforge.knowledgeltem.model.KnowledgeVersion;
 import com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeItemRepository;
+import com.matheusdev.mindforge.core.tenant.context.TenantContext;
 import com.matheusdev.mindforge.workspace.model.Workspace;
 import com.matheusdev.mindforge.workspace.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,12 +22,17 @@ public class KnowledgeBaseService {
     private final com.matheusdev.mindforge.knowledgeltem.mapper.KnowledgeItemMapper mapper;
     private final com.matheusdev.mindforge.knowledgeltem.repository.KnowledgeVersionRepository versionRepository;
 
-    public List<KnowledgeItem> getAllItems() {
-        return repository.findAll();
+    public List<KnowledgeItem> getAllKnowledgeItems() {
+        Long tenantId = TenantContext.getTenantId();
+        if (tenantId == null) {
+            throw new RuntimeException("Tenant context not set");
+        }
+        return repository.findByTenantId(tenantId);
     }
 
     public KnowledgeItem getItemById(Long id) {
-        return repository.findById(id)
+        Long tenantId = TenantContext.getTenantId();
+        return repository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + id));
     }
@@ -34,29 +40,35 @@ public class KnowledgeBaseService {
     public KnowledgeItem createItem(KnowledgeItem item, String workspaceId) {
         Workspace workspace = resolveWorkspace(workspaceId);
         item.setWorkspace(workspace);
+        // Tenant listener will set tenant from context on save
         return repository.save(item);
     }
 
     private Workspace resolveWorkspace(String identifier) {
+        Long tenantId = TenantContext.getTenantId();
         if (identifier == null || identifier.trim().isEmpty()) {
-            // Try default "Geral"
-            return workspaceRepository.findByNameIgnoreCase("Geral")
+            // Try default "Geral" for this tenant
+            return findWorkspaceInTenant("Geral", tenantId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Workspace ID not provided and default 'Geral' not found."));
+                            "Workspace ID not provided and default 'Geral' not found for this tenant."));
         }
 
-        // Try lookup by name (case insensitive)
-        return workspaceRepository.findByNameIgnoreCase(identifier)
+        // Try lookup by name (case insensitive) in tenant
+        return findWorkspaceInTenant(identifier, tenantId)
                 .orElseGet(() -> {
                     // If not found by name, try as ID if numeric
                     try {
                         Long id = Long.parseLong(identifier);
-                        return workspaceRepository.findById(id)
+                        return workspaceRepository.findByIdAndTenantId(id, tenantId)
                                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found with ID: " + id));
                     } catch (NumberFormatException e) {
                         throw new ResourceNotFoundException("Workspace not found with identifier: " + identifier);
                     }
                 });
+    }
+
+    private java.util.Optional<Workspace> findWorkspaceInTenant(String name, Long tenantId) {
+        return workspaceRepository.findByNameIgnoreCaseAndTenantId(name, tenantId);
     }
 
     public KnowledgeItem updateItem(Long id, KnowledgeItem item) {
@@ -68,14 +80,24 @@ public class KnowledgeBaseService {
     }
 
     public void deleteItem(Long id) {
-        if (!repository.existsById(id)) {
-            throw new ResourceNotFoundException("Item de conhecimento não encontrado com o id: " + id);
-        }
-        repository.deleteById(id);
+        // getItemById already checks tenant
+        KnowledgeItem item = getItemById(id);
+        repository.delete(item);
     }
 
     public List<KnowledgeItem> searchByTag(String tag) {
-        return repository.findByTag(tag);
+        // Assuming searchByTag needs to be tenant aware too.
+        // We probably need to update repository to filter searchByTag by tenant.
+        // For now, let's filter in memory if repo doesn't support it, but better to
+        // update repo.
+        // But to be safe, let's assume getAll and filter.
+        // Wait, repository.findByTag probably leaks!
+        // This method is DANGEROUS if not fixed.
+        // I will use findAll and filter relative to tenant for safety now.
+        Long tenantId = TenantContext.getTenantId();
+        return repository.findByTenantId(tenantId).stream()
+                .filter(item -> item.getTags() != null && item.getTags().contains(tag))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /**
@@ -111,9 +133,7 @@ public class KnowledgeBaseService {
 
                 // Check if this change has a manual edit
                 if (approval.getModifiedContent() != null && approval.getModifiedContent().containsKey(i)) {
-                    // Create a copy or modify (since it comes from proposal, careful with cache
-                    // side effects, but cache is usually fresh/serialized)
-                    // Better to clone just to be safe if persistent
+                    // Create a copy or modify
                     com.matheusdev.mindforge.knowledgeltem.dto.ContentChange modifiedChange = new com.matheusdev.mindforge.knowledgeltem.dto.ContentChange();
                     modifiedChange.setType(change.getType());
                     modifiedChange.setStartLine(change.getStartLine());
@@ -174,9 +194,6 @@ public class KnowledgeBaseService {
             String originalContent,
             List<com.matheusdev.mindforge.knowledgeltem.dto.ContentChange> changes) {
 
-        // For simplicity, we'll apply changes sequentially
-        // In a production system, you might want to handle conflicts and overlaps
-
         String result = originalContent;
 
         // Sort changes by line number (descending) to avoid offset issues
@@ -200,12 +217,9 @@ public class KnowledgeBaseService {
 
         switch (change.getType()) {
             case ADD:
-                // Add content at specified position
                 if (change.getStartLine() == 0) {
-                    // Add at beginning
                     return change.getProposedContent() + "\n" + content;
                 } else {
-                    // Add at specific line
                     String[] lines = content.split("\n", -1);
                     if (change.getStartLine() <= lines.length) {
                         StringBuilder sb = new StringBuilder();
@@ -224,41 +238,36 @@ public class KnowledgeBaseService {
                 return content + "\n" + change.getProposedContent();
 
             case REMOVE:
-                // Remove content between startLine and endLine
-                String[] lines = content.split("\n", -1);
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < lines.length; i++) {
+                String[] linesR = content.split("\n", -1);
+                StringBuilder sbR = new StringBuilder();
+                for (int i = 0; i < linesR.length; i++) {
                     if (i < change.getStartLine() || i > change.getEndLine()) {
-                        sb.append(lines[i]);
-                        if (i < lines.length - 1)
-                            sb.append("\n");
+                        sbR.append(linesR[i]);
+                        if (i < linesR.length - 1)
+                            sbR.append("\n");
                     }
                 }
-                return sb.toString();
+                return sbR.toString();
 
             case REPLACE:
-                // Replace content between startLine and endLine
                 if (change.getOriginalContent() != null && !change.getOriginalContent().isEmpty()) {
-                    // Replace by exact match
                     return content.replace(change.getOriginalContent(), change.getProposedContent());
                 } else {
-                    // Replace by line range
                     String[] contentLines = content.split("\n", -1);
-                    StringBuilder result = new StringBuilder();
+                    StringBuilder resultB = new StringBuilder();
                     for (int i = 0; i < contentLines.length; i++) {
                         if (i == change.getStartLine()) {
-                            result.append(change.getProposedContent());
+                            resultB.append(change.getProposedContent());
                             if (i < contentLines.length - 1)
-                                result.append("\n");
-                            // Skip lines until endLine
+                                resultB.append("\n");
                             i = change.getEndLine();
                         } else {
-                            result.append(contentLines[i]);
+                            resultB.append(contentLines[i]);
                             if (i < contentLines.length - 1)
-                                result.append("\n");
+                                resultB.append("\n");
                         }
                     }
-                    return result.toString();
+                    return resultB.toString();
                 }
 
             default:
@@ -297,6 +306,9 @@ public class KnowledgeBaseService {
      */
     public List<com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeVersionResponse> getVersionHistory(
             Long knowledgeItemId) {
+        // Enforce tenant access via getItemById check
+        getItemById(knowledgeItemId);
+
         List<KnowledgeVersion> versions = versionRepository
                 .findByKnowledgeItemIdOrderByCreatedAtDesc(knowledgeItemId);
 
@@ -311,6 +323,9 @@ public class KnowledgeBaseService {
     public com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeVersionResponse getVersion(Long versionId) {
         KnowledgeVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Version not found: " + versionId));
+
+        // Security check: ensure item belongs to tenant
+        getItemById(version.getKnowledgeItemId());
 
         return com.matheusdev.mindforge.knowledgeltem.dto.KnowledgeVersionResponse.fromEntity(version, true);
     }
@@ -327,6 +342,9 @@ public class KnowledgeBaseService {
         if (!version.getKnowledgeItemId().equals(knowledgeItemId)) {
             throw new IllegalArgumentException("Version does not belong to this knowledge item");
         }
+
+        // Security check: ensure item belongs to tenant
+        getItemById(knowledgeItemId);
 
         // Save current state as a version before rollback
         saveVersion(knowledgeItemId, null,

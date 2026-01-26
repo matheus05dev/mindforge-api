@@ -27,14 +27,49 @@ public class AuthService {
         private final JwtService jwtService;
         private final AuthenticationManager authenticationManager;
 
+        private final com.matheusdev.mindforge.core.tenant.repository.TenantRepository tenantRepository;
+
+        private final com.matheusdev.mindforge.core.config.DataSeeder dataSeeder;
+
+        @org.springframework.transaction.annotation.Transactional
         public AuthenticationResponse register(RegisterRequest request) {
+                // Create a unique tenant for the new user
+                String tenantName = request.getFirstname() + "'s Workspace";
+                String baseSlug = (request.getFirstname() + "-" + request.getLastname()).toLowerCase()
+                                .replaceAll("\\s+", "-");
+                String uniqueSlug = baseSlug + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+
+                var newTenant = com.matheusdev.mindforge.core.tenant.domain.Tenant.builder()
+                                .name(tenantName)
+                                .slug(uniqueSlug)
+                                .active(true)
+                                .plan(com.matheusdev.mindforge.core.tenant.domain.TenantPlan.FREE)
+                                .maxUsers(1)
+                                .build();
+
+                newTenant = tenantRepository.save(newTenant);
+
                 var user = User.builder()
                                 .name(request.getFirstname() + " " + request.getLastname())
                                 .email(request.getEmail())
                                 .password(passwordEncoder.encode(request.getPassword()))
                                 .role(Role.USER)
+                                .tenant(newTenant) // Assign the NEW tenant
                                 .build();
-                User savedUser = userRepository.save(user);
+
+                // Set context for saving user and seeding data
+                com.matheusdev.mindforge.core.tenant.context.TenantContext.setTenantId(newTenant.getId());
+
+                User savedUser;
+                try {
+                        savedUser = userRepository.save(user);
+
+                        // Seed default workspaces for this new tenant
+                        dataSeeder.seedWorkspacesForTenant(newTenant);
+
+                } finally {
+                        com.matheusdev.mindforge.core.tenant.context.TenantContext.clear();
+                }
 
                 // Initialize UserProfileAI for the new user
                 UserProfileAI userProfile = new UserProfileAI();
@@ -44,7 +79,7 @@ public class AuthService {
                 userProfile.setCommunicationTone(CommunicationTone.ENCOURAGING);
                 userProfileAIRepository.save(userProfile);
 
-                var jwtToken = jwtService.generateToken(user);
+                var jwtToken = jwtService.generateToken(user, user.getTenant().getId());
                 return AuthenticationResponse.builder()
                                 .token(jwtToken)
                                 .build();
@@ -57,7 +92,7 @@ public class AuthService {
                                                 request.getPassword()));
                 var user = userRepository.findByEmail(request.getEmail())
                                 .orElseThrow();
-                var jwtToken = jwtService.generateToken(user);
+                var jwtToken = jwtService.generateToken(user, user.getTenantId());
                 return AuthenticationResponse.builder()
                                 .token(jwtToken)
                                 .build();

@@ -30,11 +30,8 @@ public class KnowledgeBaseController {
                         @ApiResponse(responseCode = "200", description = "Successfully retrieved the list")
         })
         @GetMapping
-        public ResponseEntity<List<KnowledgeItemResponse>> getAllItems() {
-                List<KnowledgeItem> items = service.getAllItems();
-                return ResponseEntity.ok(items.stream()
-                                .map(mapper::toResponse)
-                                .collect(Collectors.toList()));
+        public ResponseEntity<List<KnowledgeItem>> getAllItems() {
+                return ResponseEntity.ok(service.getAllKnowledgeItems());
         }
 
         @Operation(summary = "Get a knowledge item by ID", description = "Returns a single knowledge item")
@@ -94,8 +91,6 @@ public class KnowledgeBaseController {
                                 .map(mapper::toResponse)
                                 .collect(Collectors.toList()));
         }
-
-        // ==================== VERSION MANAGEMENT ====================
 
         @Operation(summary = "Get version history", description = "Returns version history for a knowledge item")
         @GetMapping("/{id}/versions")
