@@ -1,0 +1,22 @@
+<svg width="400" height="100" viewBox="0 0 400 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bigorna Base -->
+  <path d="M20 75C20 72 25 70 35 70H65C75 70 80 72 80 75V80H20V75Z" fill="#1e293b"/>
+  <path d="M35 70L30 55H70L65 70H35Z" fill="#334155"/>
+  
+  <!-- Cérebro Parte Superior -->
+  <path d="M30 55C30 45 35 40 50 40C65 40 70 45 70 55H30Z" fill="#7c3aed"/>
+  
+  <!-- Linhas do Cérebro -->
+  <path d="M50 15C32 15 22 28 22 45C22 48 23 51 25 53" stroke="#7c3aed" stroke-width="5" stroke-linecap="round"/>
+  <path d="M50 15C68 15 78 28 78 45C78 48 77 51 75 53" stroke="#7c3aed" stroke-width="5" stroke-linecap="round"/>
+  <path d="M50 15V40" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-opacity="0.7"/>
+
+  <!-- Brilhos -->
+  <circle cx="40" cy="30" r="3" fill="white" fill-opacity="0.4" />
+  <circle cx="60" cy="30" r="3" fill="white" fill-opacity="0.4" />
+  
+  <!-- Texto MindForge -->
+  <text x="100" y="62" font-family="Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="-0.05em">
+    <tspan fill="#1e293b">Mind</tspan><tspan fill="#7c3aed">Forge</tspan>
+  </text>
+</svg>

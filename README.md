@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo-full.svg" alt="MindForge Logo" width="400">
+</p>
+
 # MindForge API - Enterprise AI Orchestration Platform
 
 ![Status](https://img.shields.io/badge/status-active_development-blue?style=for-the-badge&logo=git)
