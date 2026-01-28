@@ -25,9 +25,13 @@ public class ChatOrchestrator {
         log.info(">>> [CHAT ORCHESTRATOR] Starting Chain Execution");
 
         // Initialize Context
+        Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
+        Long tenantId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentTenantId();
+
         AIProcessingStep.AIContext initialContext = AIProcessingStep.AIContext.builder()
                 .request(chatRequest)
-                .userId(1L) // Fixed User ID for now
+                .userId(userId)
+                .tenantId(tenantId)
                 .build();
 
         // Execute Chain

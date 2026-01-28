@@ -25,6 +25,11 @@ public class StudyNoteRestController {
         return ResponseEntity.ok(noteService.getNotesBySubject(subjectId));
     }
 
+    @GetMapping("/notes")
+    public ResponseEntity<List<NoteResponse>> getAllNotes() {
+        return ResponseEntity.ok(noteService.getAllNotes());
+    }
+
     @GetMapping("/notes/{noteId}")
     public ResponseEntity<NoteResponse> getNoteById(@PathVariable Long noteId) {
         return ResponseEntity.ok(noteService.getNoteById(noteId));

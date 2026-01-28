@@ -6,6 +6,7 @@ import com.matheusdev.mindforge.integration.github.service.GitHubTokenService;
 import com.matheusdev.mindforge.integration.model.UserIntegration;
 import com.matheusdev.mindforge.integration.repository.UserIntegrationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -16,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GitHubClient {
@@ -60,11 +62,18 @@ public class GitHubClient {
      * Busca a árvore de arquivos de um repositório
      */
     public List<GitHubFileTree> getRepoTree(Long userId, String repoOwner, String repoName, String path) {
+        log.info("Fetching repo tree for UserId: {}, Owner: {}, Repo: {}, Path: {}", userId, repoOwner, repoName, path);
+
         UserIntegration integration = userIntegrationRepository
                 .findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
-                .orElseThrow(() -> new BusinessException("Integração GitHub não encontrada para o usuário."));
+                .orElseThrow(() -> {
+                    log.error("GitHub Integration NOT FOUND for UserId: {}", userId);
+                    return new BusinessException("Integração GitHub não encontrada para o usuário.");
+                }); // Line 67
 
         String currentAccessToken = integration.getAccessToken();
+
+        log.info("Integration found for UserId: {}. Access Token present.", userId);
 
         try {
             String url;
@@ -80,6 +89,7 @@ public class GitHubClient {
                     GitHubFileTree[].class);
             return List.of(response.getBody());
         } catch (HttpClientErrorException ex) {
+            log.error("GitHub API Error for UserId: {}: {}", userId, ex.getMessage());
             throw new BusinessException("Erro ao buscar árvore de arquivos do GitHub: " + ex.getStatusCode(), ex);
         }
     }

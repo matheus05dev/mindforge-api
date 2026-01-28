@@ -18,9 +18,8 @@ public class StudyRoadmapRestController {
     @PostMapping("/generate")
     public ResponseEntity<RoadmapDTOs.RoadmapResponse> generateRoadmap(
             @RequestBody RoadmapDTOs.CreateRoadmapRequest request) {
-        // Hardcoded userId 1L for now as per project pattern
+        // userId obtained from context in service
         return ResponseEntity.ok(roadmapService.generateAndSaveRoadmap(
-                1L,
                 request.getTopic(),
                 request.getDuration(),
                 request.getDifficulty()));
@@ -28,7 +27,7 @@ public class StudyRoadmapRestController {
 
     @GetMapping
     public ResponseEntity<List<RoadmapDTOs.RoadmapResponse>> getUserRoadmaps() {
-        return ResponseEntity.ok(roadmapService.getUserRoadmaps(1L));
+        return ResponseEntity.ok(roadmapService.getUserRoadmaps());
     }
 
     @GetMapping("/{id}")

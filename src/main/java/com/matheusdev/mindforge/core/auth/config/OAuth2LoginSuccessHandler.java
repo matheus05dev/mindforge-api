@@ -34,6 +34,8 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
     private final UserProfileAIRepository userProfileAIRepository;
     private final TenantRepository tenantRepository;
     private final DataSeeder dataSeeder;
+    private final com.matheusdev.mindforge.integration.repository.UserIntegrationRepository userIntegrationRepository;
+    private final org.springframework.security.oauth2.client.OAuth2AuthorizedClientService authorizedClientService;
 
     @Override
     @Transactional
@@ -97,6 +99,36 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
                 com.matheusdev.mindforge.core.tenant.context.TenantContext.clear();
             }
         }
+
+        // --- NEW: Save GitHub Integration Token ---
+        if (authentication instanceof org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken) {
+            var oauthToken = (org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken) authentication;
+            if ("github".equalsIgnoreCase(oauthToken.getAuthorizedClientRegistrationId())) {
+                var client = authorizedClientService.loadAuthorizedClient(
+                        oauthToken.getAuthorizedClientRegistrationId(),
+                        oauthToken.getName());
+
+                if (client != null) {
+                    String accessToken = client.getAccessToken().getTokenValue();
+                    String refreshToken = client.getRefreshToken() != null ? client.getRefreshToken().getTokenValue()
+                            : null;
+
+                    com.matheusdev.mindforge.integration.model.UserIntegration integration = userIntegrationRepository
+                            .findByUserIdAndProvider(user.getId(),
+                                    com.matheusdev.mindforge.integration.model.UserIntegration.Provider.GITHUB)
+                            .orElse(new com.matheusdev.mindforge.integration.model.UserIntegration());
+
+                    integration.setUserId(user.getId());
+                    integration.setProvider(com.matheusdev.mindforge.integration.model.UserIntegration.Provider.GITHUB);
+                    integration.setAccessToken(accessToken);
+                    if (refreshToken != null) {
+                        integration.setRefreshToken(refreshToken);
+                    }
+                    userIntegrationRepository.save(integration);
+                }
+            }
+        }
+        // ------------------------------------------
 
         // Generate JWT with tenant_id
         String token = jwtService.generateToken(user, user.getTenant().getId());

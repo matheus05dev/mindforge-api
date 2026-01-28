@@ -39,8 +39,8 @@ public class StudyRestController {
         if (workspaceId != null) {
             return ResponseEntity.ok(service.getSubjectsByWorkspaceId(workspaceId, pageable));
         }
-        // Return empty page when no workspaceId is provided
-        return ResponseEntity.ok(Page.empty(pageable));
+        // If no workspaceId provided, return all subjects for the tenant
+        return ResponseEntity.ok(service.getAllSubjectsSummary(pageable));
     }
 
     @Operation(summary = "Get a subject by ID", description = "Returns a single study subject")
@@ -82,6 +82,15 @@ public class StudyRestController {
     public ResponseEntity<Void> deleteSubject(@PathVariable Long subjectId) {
         service.deleteSubject(subjectId);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Get all study sessions", description = "Returns all study sessions for the current tenant across all subjects")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved all sessions")
+    })
+    @GetMapping("/sessions")
+    public ResponseEntity<List<StudySessionResponse>> getAllSessions() {
+        return ResponseEntity.ok(service.getAllSessions());
     }
 
     @Operation(summary = "Get all sessions for a subject", description = "Returns all study sessions for a specific subject")

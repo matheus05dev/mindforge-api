@@ -17,15 +17,28 @@ public class MindMapRestController {
 
     private final MindMapService service;
 
+    private com.matheusdev.mindforge.mindmap.dto.MindMapResponse toResponse(MindMap mindMap) {
+        return com.matheusdev.mindforge.mindmap.dto.MindMapResponse.builder()
+                .id(mindMap.getId())
+                .name(mindMap.getName())
+                .nodesJson(mindMap.getNodesJson())
+                .edgesJson(mindMap.getEdgesJson())
+                .workspaceId(mindMap.getWorkspace() != null ? mindMap.getWorkspace().getId() : null)
+                .build();
+    }
+
     @Operation(summary = "Get the general mind map")
     @GetMapping
-    public ResponseEntity<MindMap> getMindMap() {
-        return ResponseEntity.ok(service.getMindMap());
+    public ResponseEntity<com.matheusdev.mindforge.mindmap.dto.MindMapResponse> getMindMap() {
+        MindMap mindMap = service.getMindMap();
+        return ResponseEntity.ok(toResponse(mindMap));
     }
 
     @Operation(summary = "Save the general mind map")
     @PostMapping
-    public ResponseEntity<MindMap> saveMindMap(@RequestBody SaveMindMapRequest request) {
-        return ResponseEntity.ok(service.saveMindMap(request.getNodesJson(), request.getEdgesJson()));
+    public ResponseEntity<com.matheusdev.mindforge.mindmap.dto.MindMapResponse> saveMindMap(
+            @RequestBody SaveMindMapRequest request) {
+        MindMap mindMap = service.saveMindMap(request.getNodesJson(), request.getEdgesJson());
+        return ResponseEntity.ok(toResponse(mindMap));
     }
 }

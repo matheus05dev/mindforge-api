@@ -22,6 +22,7 @@ public interface AIProcessingStep {
         // Request Scope
         private final ChatRequest request;
         private final Long userId;
+        private final Long tenantId;
 
         // Session Scope
         private final ChatSession session;

@@ -45,6 +45,16 @@ public class StudyService {
                 .map(mapper::toResponse);
     }
 
+    @Transactional(readOnly = true)
+    public Page<SubjectSummaryResponse> getAllSubjectsSummary(Pageable pageable) {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        if (tenantId == null) {
+            throw new RuntimeException("Tenant context not set");
+        }
+        return subjectRepository.findByTenantId(tenantId, pageable)
+                .map(mapper::toSummaryResponse);
+    }
+
     public Page<SubjectSummaryResponse> getSubjectsByWorkspaceId(Long workspaceId, Pageable pageable) {
         Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
         if (workspaceId == null) {
@@ -160,6 +170,13 @@ public class StudyService {
         // Vamos confiar na verificação de propriedade do assunto por enquanto.
 
         return studySessionRepository.findBySubjectId(subjectId).stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public List<StudySessionResponse> getAllSessions() {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        return studySessionRepository.findByTenantId(tenantId).stream()
                 .map(mapper::toResponse)
                 .collect(Collectors.toList());
     }

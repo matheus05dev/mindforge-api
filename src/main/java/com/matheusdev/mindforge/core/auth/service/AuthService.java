@@ -27,6 +27,7 @@ public class AuthService {
         private final JwtService jwtService;
         private final AuthenticationManager authenticationManager;
 
+        private final com.matheusdev.mindforge.integration.repository.UserIntegrationRepository userIntegrationRepository;
         private final com.matheusdev.mindforge.core.tenant.repository.TenantRepository tenantRepository;
 
         private final com.matheusdev.mindforge.core.config.DataSeeder dataSeeder;
@@ -120,6 +121,38 @@ public class AuthService {
 
                 return userRepository.findByEmail(email)
                                 .orElseThrow(() -> new RuntimeException("User not found"));
+        }
+
+        public com.matheusdev.mindforge.core.auth.dto.UserResponse getUserProfile() {
+                User user = getCurrentUser();
+                boolean isGithubConnected = userIntegrationRepository
+                                .findByUserIdAndProvider(user.getId(),
+                                                com.matheusdev.mindforge.integration.model.UserIntegration.Provider.GITHUB)
+                                .isPresent();
+
+                String displayName = user.getName();
+                if (displayName == null || displayName.trim().isEmpty()) {
+                        String email = user.getEmail();
+                        if (email != null && email.contains("@")) {
+                                displayName = email.substring(0, email.indexOf("@"));
+                                // Capitalize first letter
+                                if (displayName.length() > 0) {
+                                        displayName = displayName.substring(0, 1).toUpperCase()
+                                                        + displayName.substring(1);
+                                }
+                        } else {
+                                displayName = "Usuário";
+                        }
+                }
+
+                return com.matheusdev.mindforge.core.auth.dto.UserResponse.builder()
+                                .id(user.getId())
+                                .name(displayName)
+                                .email(user.getEmail())
+                                .role(user.getRole())
+                                .tenantId(user.getTenantId())
+                                .isGithubConnected(isGithubConnected)
+                                .build();
         }
 
         public void changePassword(com.matheusdev.mindforge.core.auth.dto.ChangePasswordRequest request, User user) {

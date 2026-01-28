@@ -27,8 +27,10 @@ public class RoadmapService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public RoadmapDTOs.RoadmapResponse generateAndSaveRoadmap(Long userId, String topic, String duration,
+    public RoadmapDTOs.RoadmapResponse generateAndSaveRoadmap(String topic, String duration,
             String difficulty) {
+        Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
+
         // 1. Generate via AI (Sync for now, ideally async job)
         RoadmapDTOs.RoadmapResponse generatedData = aiOrchestrationService
                 .generateRoadmap(topic, duration, difficulty)
@@ -70,14 +72,16 @@ public class RoadmapService {
         return toResponse(savedRoadmap);
     }
 
-    public List<RoadmapDTOs.RoadmapResponse> getUserRoadmaps(Long userId) {
-        return roadmapRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+    public List<RoadmapDTOs.RoadmapResponse> getUserRoadmaps() {
+        Long tenantId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentTenantId();
+        return roadmapRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     public RoadmapDTOs.RoadmapResponse getRoadmap(Long id) {
-        Roadmap roadmap = roadmapRepository.findById(id)
+        Long tenantId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentTenantId();
+        Roadmap roadmap = roadmapRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new RuntimeException("Roadmap not found"));
         return toResponse(roadmap);
     }

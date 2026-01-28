@@ -17,6 +17,7 @@ import java.util.List;
 public class GitHubRestController {
 
     private final GitHubClient gitHubClient;
+    private final com.matheusdev.mindforge.core.auth.service.AuthService authService;
 
     @Operation(summary = "Get repository file tree", description = "Returns the file tree of a GitHub repository")
     @GetMapping("/repos/{owner}/{repo}/tree")
@@ -25,7 +26,7 @@ public class GitHubRestController {
             @PathVariable String repo,
             @RequestParam(required = false) String path) {
 
-        final Long userId = 1L; // TODO: Get from authenticated user
+        final Long userId = authService.getCurrentUser().getId();
         List<GitHubFileTree> tree = gitHubClient.getRepoTree(userId, owner, repo, path);
         return ResponseEntity.ok(tree);
     }

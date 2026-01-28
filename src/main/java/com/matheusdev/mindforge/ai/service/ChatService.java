@@ -27,13 +27,15 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public Optional<ChatSession> getSession(Long chatId) {
-        return chatSessionRepository.findById(chatId);
+        Long tenantId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentTenantId();
+        return chatSessionRepository.findById(chatId)
+                .filter(session -> session.getTenantId() != null && session.getTenantId().equals(tenantId));
     }
 
     @Transactional(readOnly = true)
     public java.util.List<ChatSession> getAllSessions() {
-        return chatSessionRepository.findAll(org.springframework.data.domain.Sort
-                .by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        Long tenantId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentTenantId();
+        return chatSessionRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
     }
 
     @Transactional

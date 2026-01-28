@@ -31,8 +31,8 @@ public class AuthController {
     }
 
     @org.springframework.web.bind.annotation.GetMapping("/me")
-    public ResponseEntity<com.matheusdev.mindforge.core.auth.domain.User> getMe() {
-        return ResponseEntity.ok(service.getCurrentUser());
+    public ResponseEntity<com.matheusdev.mindforge.core.auth.dto.UserResponse> getMe() {
+        return ResponseEntity.ok(service.getUserProfile());
     }
 
     @org.springframework.web.bind.annotation.PatchMapping("/change-password")

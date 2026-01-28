@@ -37,6 +37,14 @@ public class StudyNoteService {
     }
 
     @Transactional(readOnly = true)
+    public List<NoteResponse> getAllNotes() {
+        Long tenantId = com.matheusdev.mindforge.core.tenant.context.TenantContext.getTenantId();
+        return noteRepository.findByTenantId(tenantId).stream()
+                .map(mapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public NoteResponse getNoteById(Long noteId) {
         Note note = noteRepository.findById(noteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Nota não encontrada com o id: " + noteId));

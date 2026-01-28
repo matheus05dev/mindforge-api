@@ -22,34 +22,41 @@ public class ValidationStep implements AIProcessingStep {
     @Override
     public CompletableFuture<AIContext> execute(AIContext context) {
         return CompletableFuture.supplyAsync(() -> {
-            log.info(">> [CHAIN] Step 1: Validation");
+            try {
+                // Manually propagate Tenant Context to this async thread
+                com.matheusdev.mindforge.core.tenant.context.TenantContext.setTenantId(context.getTenantId());
 
-            ChatSession session = ensureSession(context.getRequest().chatId());
+                log.info(">> [CHAIN] Step 1: Validation");
 
-            String userPrompt = (context.getRequest().prompt() == null || context.getRequest().prompt().isBlank())
-                    ? "(Interação iniciada sem prompt)"
-                    : context.getRequest().prompt();
+                ChatSession session = ensureSession(context.getRequest().chatId());
 
-            if (context.getRequest().prompt() == null || context.getRequest().prompt().isBlank()) {
-                log.warn("Prompt vazio para sessão {}.", session.getId());
+                String userPrompt = (context.getRequest().prompt() == null || context.getRequest().prompt().isBlank())
+                        ? "(Interação iniciada sem prompt)"
+                        : context.getRequest().prompt();
+
+                if (context.getRequest().prompt() == null || context.getRequest().prompt().isBlank()) {
+                    log.warn("Prompt vazio para sessão {}.", session.getId());
+                }
+
+                // Save User Message immediately
+                ChatMessage userMessage = chatService.saveMessage(session, "user", userPrompt);
+                log.info("Mensagem do usuário salva no banco: {}", userMessage.getId());
+
+                // Context Correction Logic (moved from Orchestrator)
+                if (!StringUtils.hasText(session.getDocumentId())
+                        && StringUtils.hasText(context.getRequest().documentId())) {
+                    log.warn(
+                            "⚠️ CORREÇÃO DE CONTEXTO: Sessão {} estava sem documentId, mas request informou '{}'. Atualizando...",
+                            session.getId(), context.getRequest().documentId());
+                    session.setDocumentId(context.getRequest().documentId());
+                    chatService.updateSession(session);
+                }
+
+                // Return updated context with Session and Message
+                return context.withSession(session).withUserMessage(userMessage);
+            } finally {
+                com.matheusdev.mindforge.core.tenant.context.TenantContext.clear();
             }
-
-            // Save User Message immediately
-            ChatMessage userMessage = chatService.saveMessage(session, "user", userPrompt);
-            log.info("Mensagem do usuário salva no banco: {}", userMessage.getId());
-
-            // Context Correction Logic (moved from Orchestrator)
-            if (!StringUtils.hasText(session.getDocumentId())
-                    && StringUtils.hasText(context.getRequest().documentId())) {
-                log.warn(
-                        "⚠️ CORREÇÃO DE CONTEXTO: Sessão {} estava sem documentId, mas request informou '{}'. Atualizando...",
-                        session.getId(), context.getRequest().documentId());
-                session.setDocumentId(context.getRequest().documentId());
-                chatService.updateSession(session);
-            }
-
-            // Return updated context with Session and Message
-            return context.withSession(session).withUserMessage(userMessage);
         });
     }
 

@@ -46,25 +46,38 @@ public class KnowledgeBaseService {
 
     private Workspace resolveWorkspace(String identifier) {
         Long tenantId = TenantContext.getTenantId();
+
+        // 1. If no identifier provided, try default "Geral"
         if (identifier == null || identifier.trim().isEmpty()) {
-            // Try default "Geral" for this tenant
             return findWorkspaceInTenant("Geral", tenantId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Workspace ID not provided and default 'Geral' not found for this tenant."));
         }
 
-        // Try lookup by name (case insensitive) in tenant
-        return findWorkspaceInTenant(identifier, tenantId)
-                .orElseGet(() -> {
-                    // If not found by name, try as ID if numeric
-                    try {
-                        Long id = Long.parseLong(identifier);
-                        return workspaceRepository.findByIdAndTenantId(id, tenantId)
-                                .orElseThrow(() -> new ResourceNotFoundException("Workspace not found with ID: " + id));
-                    } catch (NumberFormatException e) {
-                        throw new ResourceNotFoundException("Workspace not found with identifier: " + identifier);
-                    }
-                });
+        // 2. Try to verify if it is an ID first (standard flow)
+        try {
+            Long id = Long.parseLong(identifier);
+            return workspaceRepository.findByIdAndTenantId(id, tenantId)
+                    .orElseGet(() -> {
+                        // FALLBACK: If ID was "1" (common frontend default) but not found in this
+                        // tenant,
+                        // try to find the "Geral" workspace for this tenant.
+                        // This handles the case where frontend hardcodes ID=1 but DB generated a
+                        // different ID.
+                        if (id == 1L) {
+                            return findWorkspaceInTenant("Geral", tenantId)
+                                    .orElseThrow(() -> new ResourceNotFoundException(
+                                            "Workspace not found with ID: " + id
+                                                    + " and fallback 'Geral' also not found."));
+                        }
+                        throw new ResourceNotFoundException("Workspace not found with ID: " + id);
+                    });
+        } catch (NumberFormatException e) {
+            // 3. If not an ID, try as Name
+            return findWorkspaceInTenant(identifier, tenantId)
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("Workspace not found with identifier: " + identifier));
+        }
     }
 
     private java.util.Optional<Workspace> findWorkspaceInTenant(String name, Long tenantId) {

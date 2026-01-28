@@ -19,6 +19,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@EntityListeners(com.matheusdev.mindforge.core.tenant.listener.TenantEntityListener.class)
 public class Roadmap {
 
     @Id
@@ -33,6 +34,14 @@ public class Roadmap {
     private String targetAudience; // e.g., "Beginner", "Advanced"
 
     private Long userId; // For now simplified, later User entity relation
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id")
+    private com.matheusdev.mindforge.core.tenant.domain.Tenant tenant;
+
+    @Column(name = "tenant_id", insertable = false, updatable = false)
+    private Long tenantId;
 
     @OneToMany(mappedBy = "roadmap", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference

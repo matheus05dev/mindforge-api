@@ -22,4 +22,6 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Long> 
     // ChatSession doesn't have tenant_id directly, but can be filtered via
     // relationships
     // For now, we'll rely on service layer filtering
+    // UPDATE: Now providing tenant-aware query
+    List<ChatSession> findByTenantIdOrderByCreatedAtDesc(Long tenantId);
 }
