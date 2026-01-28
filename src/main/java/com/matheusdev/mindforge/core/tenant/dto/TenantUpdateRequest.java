@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.tenant.dto;
 
-import com.matheusdev.mindforge.core.tenant.domain.TenantPlan;
+import com.matheusdev.mindforge.core.tenant.model.TenantPlan;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;

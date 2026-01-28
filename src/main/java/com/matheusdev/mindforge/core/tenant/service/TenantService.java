@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.tenant.service;
 
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
 import com.matheusdev.mindforge.core.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

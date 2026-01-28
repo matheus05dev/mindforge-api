@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.auth.dto;
 
-import com.matheusdev.mindforge.core.auth.domain.Role;
+import com.matheusdev.mindforge.core.auth.model.Role;
 import lombok.Builder;
 import lombok.Data;
 

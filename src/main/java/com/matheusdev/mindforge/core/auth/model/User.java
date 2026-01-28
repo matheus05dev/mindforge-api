@@ -1,4 +1,4 @@
-package com.matheusdev.mindforge.core.auth.domain;
+package com.matheusdev.mindforge.core.auth.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -34,7 +34,7 @@ public class User implements UserDetails {
     @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id", nullable = false)
-    private com.matheusdev.mindforge.core.tenant.domain.Tenant tenant;
+    private com.matheusdev.mindforge.core.tenant.model.Tenant tenant;
 
     @Column(name = "tenant_id", insertable = false, updatable = false)
     private Long tenantId;

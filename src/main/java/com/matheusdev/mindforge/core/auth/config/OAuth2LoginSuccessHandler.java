@@ -1,10 +1,10 @@
 package com.matheusdev.mindforge.core.auth.config;
 
-import com.matheusdev.mindforge.core.auth.domain.Role;
-import com.matheusdev.mindforge.core.auth.domain.User;
+import com.matheusdev.mindforge.core.auth.model.Role;
+import com.matheusdev.mindforge.core.auth.model.User;
 import com.matheusdev.mindforge.core.auth.repository.UserRepository;
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
-import com.matheusdev.mindforge.core.tenant.domain.TenantPlan;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.TenantPlan;
 import com.matheusdev.mindforge.core.tenant.repository.TenantRepository;
 import com.matheusdev.mindforge.core.config.DataSeeder;
 import com.matheusdev.mindforge.ai.memory.model.UserProfileAI;

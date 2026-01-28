@@ -1,7 +1,7 @@
 package com.matheusdev.mindforge.core.tenant.controller;
 
 import com.matheusdev.mindforge.core.auth.service.AuthService;
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
 import com.matheusdev.mindforge.core.tenant.dto.TenantResponse;
 import com.matheusdev.mindforge.core.tenant.dto.TenantUpdateRequest;
 import com.matheusdev.mindforge.core.tenant.service.TenantService;

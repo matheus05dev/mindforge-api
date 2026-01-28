@@ -1,7 +1,7 @@
 package com.matheusdev.mindforge.core.tenant.listener;
 
 import com.matheusdev.mindforge.core.tenant.context.TenantContext;
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
 import jakarta.persistence.PrePersist;
 import org.springframework.beans.BeanWrapper;
 import org.springframework.beans.BeanWrapperImpl;

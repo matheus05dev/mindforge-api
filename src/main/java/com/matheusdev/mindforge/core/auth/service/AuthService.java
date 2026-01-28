@@ -1,8 +1,8 @@
 package com.matheusdev.mindforge.core.auth.service;
 
 import com.matheusdev.mindforge.core.auth.config.JwtService;
-import com.matheusdev.mindforge.core.auth.domain.Role;
-import com.matheusdev.mindforge.core.auth.domain.User;
+import com.matheusdev.mindforge.core.auth.model.Role;
+import com.matheusdev.mindforge.core.auth.model.User;
 import com.matheusdev.mindforge.core.auth.dto.AuthenticationRequest;
 import com.matheusdev.mindforge.core.auth.dto.AuthenticationResponse;
 import com.matheusdev.mindforge.core.auth.dto.RegisterRequest;
@@ -40,11 +40,11 @@ public class AuthService {
                                 .replaceAll("\\s+", "-");
                 String uniqueSlug = baseSlug + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
 
-                var newTenant = com.matheusdev.mindforge.core.tenant.domain.Tenant.builder()
+                var newTenant = com.matheusdev.mindforge.core.tenant.model.Tenant.builder()
                                 .name(tenantName)
                                 .slug(uniqueSlug)
                                 .active(true)
-                                .plan(com.matheusdev.mindforge.core.tenant.domain.TenantPlan.FREE)
+                                .plan(com.matheusdev.mindforge.core.tenant.model.TenantPlan.FREE)
                                 .maxUsers(1)
                                 .build();
 

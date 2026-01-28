@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.tenant.dto;
 
-import com.matheusdev.mindforge.core.tenant.domain.TenantPlan;
+import com.matheusdev.mindforge.core.tenant.model.TenantPlan;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

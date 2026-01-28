@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.auth.util;
 
-import com.matheusdev.mindforge.core.auth.domain.User;
+import com.matheusdev.mindforge.core.auth.model.User;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 

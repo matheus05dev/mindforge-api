@@ -1,4 +1,4 @@
-package com.matheusdev.mindforge.core.tenant.domain;
+package com.matheusdev.mindforge.core.tenant.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

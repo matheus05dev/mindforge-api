@@ -1,8 +1,8 @@
 package com.matheusdev.mindforge.core.config;
 
 import com.matheusdev.mindforge.core.tenant.context.TenantContext;
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
-import com.matheusdev.mindforge.core.tenant.domain.TenantPlan;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.TenantPlan;
 import com.matheusdev.mindforge.core.tenant.repository.TenantRepository;
 import com.matheusdev.mindforge.workspace.model.Workspace;
 import com.matheusdev.mindforge.workspace.model.WorkspaceType;

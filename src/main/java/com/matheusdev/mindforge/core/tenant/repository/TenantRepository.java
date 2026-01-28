@@ -1,6 +1,6 @@
 package com.matheusdev.mindforge.core.tenant.repository;
 
-import com.matheusdev.mindforge.core.tenant.domain.Tenant;
+import com.matheusdev.mindforge.core.tenant.model.Tenant;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -38,7 +38,7 @@ public class Roadmap {
     @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id")
-    private com.matheusdev.mindforge.core.tenant.domain.Tenant tenant;
+    private com.matheusdev.mindforge.core.tenant.model.Tenant tenant;
 
     @Column(name = "tenant_id", insertable = false, updatable = false)
     private Long tenantId;
