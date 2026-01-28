@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL com pgvector
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: mindforge-db
+    environment:
+      POSTGRES_DB: mindforge
+      POSTGRES_USER: mindforge_user
+      POSTGRES_PASSWORD: mindforge_pass
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mindforge_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mindforge-network
+
+  # Ollama (IA local)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mindforge-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mindforge-network
+
+  # MindForge API (opcional - roda localmente é melhor pra dev)
+  api:
+    build: 
+      context: ../
+      dockerfile: setup/Dockerfile
+    container_name: mindforge-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mindforge
+      SPRING_DATASOURCE_USERNAME: mindforge_user
+      SPRING_DATASOURCE_PASSWORD: mindforge_pass
+      AI_PROVIDER: ollama
+      AI_OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_API_URL: http://ollama:11434/api/chat
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - mindforge-network
+
+volumes:
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  mindforge-network:
+    driver: bridge

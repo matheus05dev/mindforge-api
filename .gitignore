@@ -40,3 +40,4 @@ src/main/resources/application.properties
 # Uploads
 uploads/
 
+src/main/resources/application.properties
