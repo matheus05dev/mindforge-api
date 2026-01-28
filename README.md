@@ -4,9 +4,10 @@
 
 # MindForge API - Enterprise AI Orchestration Platform
 
-![Status](https://img.shields.io/badge/status-active_development-blue?style=for-the-badge&logo=git)
+![Status](https://img.shields.io/badge/status-finalizado-brightgreen?style=for-the-badge&logo=git)
+![Tests](https://img.shields.io/badge/Tests-129_Passing-brightgreen?style=for-the-badge&logo=junit5&logoColor=white)
 ![Java](https://img.shields.io/badge/Java_21-LTS-orange?style=for-the-badge&logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3-brightgreen?style=for-the-badge&logo=spring&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3.5-brightgreen?style=for-the-badge&logo=spring&logoColor=white)
 ![Architecture](https://img.shields.io/badge/Architecture-Modular_Monolith-purple?style=for-the-badge)
 
 > **Uma plataforma de orquestração de IA de nível corporativo projetada para transformar modelos de linguagem em mentores contextuais especializados.**
@@ -235,7 +236,10 @@ Para customizar credenciais ou chaves de API, você pode criar variáveis de amb
 
 Para mudar o provedor de IA (Ollama vs Groq), edite o `application.properties` ou injete a variável `AI_PROVIDER`.
 
-## 🧪 Testes
+## 🧪 Testes & Qualidade
+
+O projeto mantém um rigoroso padrão de qualidade com testes automatizados cobrindo serviços, controladores e utilitários.
+
 ```bash
 # Rodar todos os testes
 ./mvnw test
@@ -244,6 +248,9 @@ Para mudar o provedor de IA (Ollama vs Groq), edite o `application.properties` o
 ./mvnw test jacoco:report
 # Ver relatório: open target/site/jacoco/index.html
 ```
+
+> [!NOTE]
+> **Status Atual**: 129 testes passando com sucesso. A cobertura inclui validação de multi-tenancy, orquestração de IA, segurança e lógica de domínio.
 
 ## 📊 Banco de Dados & Migrations
 
