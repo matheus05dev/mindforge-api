@@ -32,12 +32,13 @@ build/
 ### VS Code ###
 .vscode/
 
-# Application properties
+# Application properties with secrets
 src/main/resources/application.properties
 src/main/resources/application-dev.properties
-src/main/resources/application.properties
+src/main/resources/application-local.properties
+
+# Environment variables
+.env
 
 # Uploads
 uploads/
-
-src/main/resources/application.properties
