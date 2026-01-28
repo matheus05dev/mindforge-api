@@ -11,13 +11,14 @@ on:
 
 jobs:
   build:
-    name: Build and Analyze
+    name: Build, Test & Docker Verify
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
-          # O SonarCloud precisa do histórico completo para analisar o autor de cada linha
+          # O SonarCloud precisa do histórico completo
           fetch-depth: 0
 
       - name: Configurar JDK 21
@@ -25,34 +26,48 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: 'maven' # Configura cache do Maven automaticamente
 
       - name: Cache de dependências do SonarCloud
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Cache de dependências do Maven
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Iniciar Banco de Dados PostgreSQL
-        # Usamos um "service container" para que os testes de integração tenham um banco para se conectar
+      - name: Subir Infraestrutura (Postgres + Ollama)
+        working-directory: ./setup
         run: |
-          docker-compose up -d
-        # O host do banco será 'localhost' dentro do runner
+          docker-compose up -d postgres ollama
+          echo "⏳ Aguardando Banco de Dados iniciar..."
+          sleep 15 # Espera inicial
+          
+          # Loop de verificação simples
+          until docker exec mindforge-db pg_isready -U mindforge_user; do
+            echo "Aguardando Postgres..."
+            sleep 2
+          done
+          echo "✅ Infraestrutura pronta!"
 
-      - name: Build, Teste e Análise com Maven e SonarCloud
-        # O comando 'verify' executa todas as fases do Maven até a verificação (incluindo 'test')
-        # O JaCoCo gera o relatório de cobertura durante a fase 'test'
-        # O plugin do Sonar é ativado para enviar a análise
+      - name: Make Maven Wrapper Executable
+        run: chmod +x mvnw
+
+      - name: Build, Teste e Análise (SonarCloud)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Token automático para análise de PRs
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}      # Token do seu projeto no SonarCloud
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ./mvnw -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dspring.profiles.active=test
+
+      - name: Verificar Build da Imagem Docker
+        # Garante que o Dockerfile está funcional
+        working-directory: ./setup
+        run: |
+          docker build -t mindforge-api:test .
+
+      - name: Derrubar Infraestrutura
+        if: always()
+        working-directory: ./setup
+        run: docker-compose down -v
 

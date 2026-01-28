@@ -50,7 +50,7 @@ public class CodeAnalysisService {
 
     @Transactional
     public ChatMessage analyzeCodeForProficiency(CodeAnalysisRequest request) throws IOException {
-        final Long userId = 1L; // Provisório
+        final Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
         Subject subject = subjectRepository.findById(request.getSubjectId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Assunto de estudo não encontrado com o id: " + request.getSubjectId()));
@@ -120,29 +120,47 @@ public class CodeAnalysisService {
 
     @Transactional
     public ChatMessage analyzeGitHubFile(GitHubFileAnalysisRequest request) throws IOException {
-        final Long userId = 1L; // Provisório
-        Project project = projectRepository.findById(request.getProjectId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Projeto não encontrado com o id: " + request.getProjectId()));
+        final Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
+
+        String repoUrl;
+        Subject contextSubject;
+
+        // Support both projectId and subjectId
+        if (request.getProjectId() != null) {
+            Project project = projectRepository.findById(request.getProjectId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Projeto não encontrado com o id: " + request.getProjectId()));
+            repoUrl = project.getGithubRepoUrl();
+
+            // Use first subject as context (or could be improved to use project-related
+            // subject)
+            contextSubject = subjectRepository.findAll().stream().findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Nenhum assunto de estudo encontrado para contextualizar a análise."));
+        } else if (request.getSubjectId() != null) {
+            Subject subject = subjectRepository.findById(request.getSubjectId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Matéria não encontrada com o id: " + request.getSubjectId()));
+            repoUrl = subject.getGithubRepoUrl();
+            contextSubject = subject;
+        } else {
+            throw new BusinessException("É necessário fornecer projectId ou subjectId.");
+        }
 
         userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
                 .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub."));
 
-        String repoUrl = project.getGithubRepoUrl();
         if (repoUrl == null || repoUrl.isEmpty()) {
-            throw new BusinessException("O projeto não está vinculado a um repositório do GitHub.");
+            throw new BusinessException("O projeto/matéria não está vinculado a um repositório do GitHub.");
         }
         String[] urlParts = repoUrl.replace("https://github.com/", "").split("/");
         String owner = urlParts[0];
-        String repoName = urlParts[1];
+        String repoName = urlParts[1].replace(".git", "");
 
         String fileContent = gitHubClient.getFileContent(userId, owner, repoName, request.getFilePath());
 
-        Subject subject = subjectRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Nenhum assunto de estudo encontrado para contextualizar a análise."));
         CodeAnalysisRequest internalRequest = new CodeAnalysisRequest();
-        internalRequest.setSubjectId(subject.getId());
+        internalRequest.setSubjectId(contextSubject.getId());
         internalRequest.setCodeToAnalyze(fileContent);
         internalRequest.setMode(request.getMode());
         return analyzeCodeForProficiency(internalRequest);

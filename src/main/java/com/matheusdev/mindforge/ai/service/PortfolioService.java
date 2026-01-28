@@ -32,13 +32,14 @@ public class PortfolioService {
 
     @Transactional
     public ChatMessage reviewPortfolio(PortfolioReviewRequest request) throws IOException {
-        final Long userId = 1L; // Provisório
+        final Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
         String[] urlParts = request.getGithubRepoUrl().replace("https://github.com/", "").split("/");
         String owner = urlParts[0];
         String repoName = urlParts[1];
 
         userIntegrationRepository.findByUserIdAndProvider(userId, UserIntegration.Provider.GITHUB)
-                .orElseThrow(() -> new BusinessException("O usuário não conectou a conta do GitHub para esta operação."));
+                .orElseThrow(
+                        () -> new BusinessException("O usuário não conectou a conta do GitHub para esta operação."));
 
         String readmeContent = gitHubClient.getFileContent(userId, owner, repoName, "README.md");
         UserProfileAI userProfile = memoryService.getProfile(userId);
@@ -48,7 +49,8 @@ public class PortfolioService {
         ChatMessage userMessage = chatService.saveMessage(session, "user", prompts.userPrompt());
 
         try {
-            ChatRequest chatRequest = new ChatRequest(null, null, prompts.userPrompt(), request.getProvider(), null, prompts.systemPrompt());
+            ChatRequest chatRequest = new ChatRequest(null, null, prompts.userPrompt(), request.getProvider(), null,
+                    prompts.systemPrompt());
             AIProviderResponse aiResponse = aiOrchestrationService.handleChatInteraction(chatRequest).get();
 
             if (aiResponse.getError() != null) {

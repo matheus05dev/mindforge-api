@@ -72,7 +72,7 @@ public class AIService {
 
     @Transactional
     public ChatMessage analyzeGeneric(GenericAnalysisRequest request, String provider) {
-        final Long userId = 1L; // Provisório
+        final Long userId = com.matheusdev.mindforge.core.auth.util.SecurityUtils.getCurrentUserId();
         UserProfileAI userProfile = memoryService.getProfile(userId);
 
         Optional<Subject> subject = request.getSubjectId() != null ? subjectRepository.findById(request.getSubjectId())

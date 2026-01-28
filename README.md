@@ -122,25 +122,171 @@ Suporte nativo a SaaS B2B com **Multi-Inquilino (Multi-Tenancy)**:
 
 ---
 
-## 🚀 Como Executar o Projeto
+## � Infraestrutura e Setup
+
+> **Para Recrutadores e Desenvolvedores:**  
+> Toda a configuração de infraestrutura, scripts de automação, exemplos e Dockerfiles foram organizados na pasta [`setup/`](./setup/).
+> Lá você encontrará:
+> - **[INFRA_EXPLANATION.md](./setup/INFRA_EXPLANATION.md)**: Explicação detalhada da infraestrutura.
+> - **Makefile**: Comandos rápidos para rodar o projeto.
+> - **Docker Hub**: Configuração completa dos containers.
+> - **Scripts de IA**: Automação para setup do Ollama.
+
+---
+
+## �🚀 Início Rápido (Quick Start)
+
+### Passo 1: Clone o Repositório
+```bash
+git clone https://github.com/matheus05dev/mindforge-api.git
+cd mindforge-api
+```
+
+### Opção 1: Modo Desenvolvimento (Recomendado)
+
+Rode a infraestrutura no Docker (DB + Ollama) e a API na sua IDE/Local.
 
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/matheus05dev/mindforge-api.git
+# 1. Entre na pasta de setup
+cd setup
 
-# 2. Configuração de Variáveis de Ambiente
-# Crie um arquivo application.properties ou exporte as variáveis:
-export GROQ_API_KEY="sua_chave_aqui"
-# Ollama roda localmente na porta 11434 (sem key necessária)
+# 2. Inicie o Banco de Dados e Ollama
+make dev
 
-# 3. Subir Infraestrutura (Banco de Dados)
-docker-compose up -d
+# 3. Baixe os modelos de IA (apenas na primeira vez)
+make setup-ai
 
-# 4. Build & Run
+# 4. Volte para a raiz e rode a API
+cd ..
+./mvnw spring-boot:run
+
+# Acesso
+# API: http://localhost:8080
+# Swagger: http://localhost:8080/swagger-ui.html
+```
+
+### Opção 2: Stack Completo no Docker
+
+Rode tudo (Banco, Ollama e API) dentro de containers.
+
+```bash
+# 1. Entre na pasta de setup
+cd setup
+
+# 2. Inicie todos os serviços
+make up
+
+# 3. Baixe os modelos de IA (apenas na primeira vez)
+make setup-ai
+
+# Acesso
+# API: http://localhost:8080
+# Swagger: http://localhost:8080/swagger-ui.html
+```
+
+### Opção 3: Setup Manual (Sem Docker)
+
+```bash
+# 1. Instale PostgreSQL 15+ com pgvector
+createdb mindforge
+psql mindforge -c "CREATE EXTENSION vector;"
+
+# 2. (Opcional) Instale Ollama
+# Baixe em: https://ollama.ai
+ollama pull nomic-embed-text
+ollama pull llama3.1:8b
+
+# 3. Configure application.properties
+# O arquivo src/main/resources/application.properties já está configurado para dev local
+# Ajuste user/pass do banco se necessário
+
+# 4. Rode a aplicação
 ./mvnw spring-boot:run
 ```
 
-> **Nota**: A aplicação rodará em `localhost:8080`. Acesse `/swagger-ui.html` para explorar a API.
+## 📦 Comandos Disponíveis (make)
+> **Nota:** Execute estes comandos dentro da pasta `setup/`
+
+```bash
+cd setup
+make dev       # Inicia DB + Ollama (dev local)
+make up        # Inicia todos os serviços
+make down      # Para os serviços
+make clean     # Remove tudo (containers + volumes)
+make logs      # Vê os logs
+make test      # Roda os testes (usa wrapper na raiz)
+make setup-ai  # Baixa modelos do Ollama
+```
+
+## 🔧 Configuração
+
+### Variáveis de Ambiente
+
+O projeto usa `src/main/resources/application-docker.properties` para o ambiente Docker, que é mapeado automaticamente pelo profile.
+
+Para customizar credenciais ou chaves de API, você pode criar variáveis de ambiente no seu sistema ou editar os arquivos.
+
+**Principais Variáveis:**
+- `POSTGRES_USER` (Padrão: mindforge_user)
+- `POSTGRES_PASSWORD` (Padrão: mindforge_pass)
+- `GROQ_API_KEY` (Opcional, para usar Groq Cloud)
+
+### Provedores de IA
+
+Para mudar o provedor de IA (Ollama vs Groq), edite o `application.properties` ou injete a variável `AI_PROVIDER`.
+
+## 🧪 Testes
+```bash
+# Rodar todos os testes
+./mvnw test
+
+# Com relatório de cobertura (Jacoco)
+./mvnw test jacoco:report
+# Ver relatório: open target/site/jacoco/index.html
+```
+
+## 📊 Banco de Dados & Migrations
+
+O projeto usa **Hibernate ddl-auto** para gestão de schema em desenvolvimento.
+A extensão `vector` é obrigatória no PostgreSQL e é instalada automaticamente pelo `setup/init.sql` no Docker.
+
+## 🐛 Troubleshooting
+
+### Ollama não conecta
+```bash
+# Verifique se está rodando
+curl http://localhost:11434/api/tags
+
+# Reinicie
+cd setup && docker restart mindforge-ollama
+```
+
+### Porta em uso
+```bash
+# Verifique o que está usando a porta
+lsof -i :8080  # API
+lsof -i :5432  # Postgres
+```
+
+## 📚 Estrutura do Projeto
+```
+mindforge-api/
+├── setup/                  # 🐳 Arquivos de Infraestrutura (Docker, Make)
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   ├── Makefile
+│   └── setup-ollama.sh
+├── src/
+│   ├── main/
+│   │   ├── java/com/matheusdev/mindforge/
+│   │   │   ├── core/       # Auth, Tenant, Config
+│   │   │   └── ...         # Domínios (Project, Study, AI...)
+│   │   └── resources/
+│   │       ├── application.properties        # Config Local
+│   │       └── application-docker.properties # Config Docker
+├── pom.xml
+└── README.md
+```
 
 ---
 

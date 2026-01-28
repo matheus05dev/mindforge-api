@@ -13,5 +13,7 @@ public class SubjectRequest {
 
     private ProficiencyLevel proficiencyLevel;
 
+    private String githubRepoUrl;
+
     private Long workspaceId;
 }
