@@ -1309,26 +1309,7 @@ erDiagram
 
 ---
 
-## 11. Trade-offs Atuais
-
-### 10.1. Autenticação e Perfil de Usuário (Trade-offs Atuais)
-
-**Estado Atual**:
-O projeto opera como **single-user** com um `userId` fixo (`1L`). A complexidade de segurança e multi-tenancy foi conscientemente adiada para focar na lógica de IA e arquitetura core.
-
-**Implicações**:
-- **Segurança**: API aberta, sem autenticação
-- **Multi-tenancy**: Personalização limitada a um único perfil
-- **Escalabilidade**: Preparado para suportar múltiplos usuários quando necessário
-
-**Justificativa**:
-- **Foco**: Priorização de funcionalidades core de IA
-- **Desenvolvimento Acelerado**: Redução de complexidade inicial
-- **Arquitetura Preparada**: Estrutura permite adição futura de autenticação
-
----
-
-## 12. Conclusão
+## 11. Conclusão
 
 Este documento serve como um guia abrangente para a arquitetura do MindForge, detalhando suas escolhas de design, fluxos de dados, padrões implementados e o caminho para sua evolução.
 
