@@ -4,13 +4,14 @@
 
 1. [Visão Geral e Filosofia](#1-visão-geral-e-filosofia)
 2. [Decisões Arquiteturais Fundamentais](#2-decisões-arquiteturais-fundamentais)
-3. [Arquitetura Dinâmica: Fluxo de Requisições](#3-arquitetura-dinâmica-fluxo-de-requisições)
-4. [Ciclo de Memória Assíncrono](#4-ciclo-de-memória-assíncrono)
-5. [Resiliência e Tratamento de Falhas](#5-resiliência-e-tratamento-de-falhas)
-6. [Padrões de Engenharia de Prompt](#6-padrões-de-engenharia-de-prompt)
-7. [Orquestração Multi-Provider](#7-orquestração-multi-provider)
-8. [Agente de Conhecimento (Writer/Editor)](#8-agente-de-conhecimento-writereditor)
-9. [Conclusão](#9-conclusão)
+3. [Isolamento Multi-Tenant em IA](#3-isolamento-multi-tenant-em-ia)
+4. [Arquitetura Dinâmica: Fluxo de Requisições](#4-arquitetura-dinâmica-fluxo-de-requisições)
+5. [Ciclo de Memória Assíncrono](#5-ciclo-de-memória-assíncrono)
+6. [Resiliência e Tratamento de Falhas](#6-resiliência-e-tratamento-de-falhas)
+7. [Padrões de Engenharia de Prompt](#7-padrões-de-engenharia-de-prompt)
+8. [Orquestração Multi-Provider](#8-orquestração-multi-provider)
+9. [Agente de Conhecimento (Writer/Editor)](#9-agente-de-conhecimento-writereditor)
+10. [Conclusão](#10-conclusão)
 
 ---
 
@@ -167,7 +168,7 @@ flowchart TD
     end
 ```
 
-### 3.1. Fase 1: Roteamento de Tarefas (Facade Pattern)
+### 4.1. Fase 1: Roteamento de Tarefas (Facade Pattern)
 
 O `AIOrchestrationService` atua como **Facade**, simplificando a complexidade dos múltiplos orquestradores especializados. Ele recebe a requisição e a encaminha para o especialista correto:
 
@@ -177,7 +178,7 @@ O `AIOrchestrationService` atua como **Facade**, simplificando a complexidade do
 - **RoadmapGeneratorService**: Planejamento de estudos
 - **InternalAnalysisService**: Tarefas de background e análise técnica
 
-### 3.2. Fase 2: Motor de Contexto
+### 4.2. Fase 2: Motor de Contexto
 
 O `AIContextService` coleta e estrutura o contexto necessário para a requisição:
 
@@ -186,7 +187,7 @@ O `AIContextService` coleta e estrutura o contexto necessário para a requisiç�
 - **Histórico de Conversas**: Contexto de interações anteriores
 - **Metadados**: Informações adicionais relevantes ao tipo de tarefa
 
-### 3.3. Fase 3: Motor de Prompt (Chain of Responsibility)
+### 4.3. Fase 3: Motor de Prompt (Chain of Responsibility)
 
 O pipeline de construção de prompts utiliza o padrão **Chain of Responsibility** onde cada `PromptBuildingStep` enriquece o contexto sequencialmente:
 
@@ -196,7 +197,7 @@ O pipeline de construção de prompts utiliza o padrão **Chain of Responsibilit
 4. **ExecutionStep**: Seleciona o provider (via Factory) e executa a chamada
 5. **AuditStep**: Persiste logs e memória assíncrona
 
-### 3.4. Fase 4: Abstração de Provedor
+### 4.4. Fase 4: Abstração de Provedor
 
 O `AIProvider` atua como camada de abstração que:
 
@@ -205,7 +206,7 @@ O `AIProvider` atua como camada de abstração que:
 - Implementa padrões de resiliência (Circuit Breaker, Retry, etc.)
 - Normaliza respostas de diferentes provedores
 
-### 3.5. Fase 5: APIs Externas
+### 4.5. Fase 5: APIs Externas
 
 Integração com provedores externos:
 
@@ -214,11 +215,11 @@ Integração com provedores externos:
 
 ---
 
-### 3.6. Fluxos Especializados e Web Research
+### 4.6. Fluxos Especializados e Web Research
 
 Além do chat padrão, a arquitetura suporta fluxos complexos que integram **pesquisa na web (Tavily)** para garantir factualidade e atualidade.
 
-#### 3.6.1. Integração de Web Research (RAG Dinâmico)
+#### 4.6.1. Integração de Web Research (RAG Dinâmico)
 
 O `WebSearchService` permite que a IA acesse a internet em tempo real. Diferente do RAG tradicional (baseado em arquivos), este é um **Web-RAG**:
 
@@ -228,7 +229,7 @@ O `WebSearchService` permite que a IA acesse a internet em tempo real. Diferente
 4. **Context Injection**: Resultados são injetados no prompt do sistema.
 5. **Citational Response**: IA gera resposta citando as fontes encontradas.
 
-#### 3.6.2. Fluxo: Geração de Quiz (Study Domain)
+#### 4.6.2. Fluxo: Geração de Quiz (Study Domain)
 
 Gera avaliações baseadas em anotações do usuário + conhecimento atualizado da web.
 
@@ -258,7 +259,7 @@ sequenceDiagram
     QS->>User: Quiz Interativo
 ```
 
-#### 3.6.3. Fluxo: Geração de Roadmap (Product Thinking)
+#### 4.6.3. Fluxo: Geração de Roadmap (Product Thinking)
 
 Cria planos de estudo estruturados, validando a existência de cursos e materiais na web.
 
@@ -284,7 +285,7 @@ sequenceDiagram
     RS->>User: Roadmap Visual
 ```
 
-## 4. Ciclo de Memória Assíncrono
+## 5. Ciclo de Memória Assíncrono
 
 O ciclo de memória é o mecanismo que permite à IA evoluir de uma ferramenta de pergunta-resposta para um **mentor que aprende continuamente**. O diagrama abaixo foca exclusivamente neste processo.
 
@@ -312,7 +313,7 @@ sequenceDiagram
     MS-->>-AIS: 
 ```
 
-### 4.1. O Conceito de Meta-Prompt
+### 5.1. O Conceito de Meta-Prompt
 
 O **Meta-Prompt** é uma técnica avançada de engenharia de prompt onde a IA é instruída a analisar sua própria interação e estado anterior para gerar um novo estado atualizado.
 
@@ -326,7 +327,7 @@ incluindo níveis de proficiência ajustados e tópicos sugeridos
 para estudo futuro. Mantenha o formato JSON estritamente.
 ```
 
-### 4.2. Estrutura do Perfil de Usuário
+### 5.2. Estrutura do Perfil de Usuário
 
 O `UserProfileAI` armazena:
 
@@ -335,7 +336,7 @@ O `UserProfileAI` armazena:
 - **Histórico de Interações**: Referências a conversas anteriores
 - **Metadados**: Timestamps, versão do perfil, estatísticas
 
-### 4.3. Impacto no Sistema
+### 5.3. Impacto no Sistema
 
 Este mecanismo cria um **ciclo de feedback positivo**:
 
@@ -346,11 +347,11 @@ Este mecanismo cria um **ciclo de feedback positivo**:
 
 ---
 
-## 5. Resiliência e Tratamento de Falhas
+## 6. Resiliência e Tratamento de Falhas
 
 Um sistema que depende de serviços de rede externos deve ser inerentemente resiliente. A arquitetura do MindForge incorpora múltiplos padrões de resiliência utilizando a biblioteca **Resilience4j**, com configurações específicas para cada tipo de serviço.
 
-### 5.1. Arquitetura de Resiliência
+### 6.1. Arquitetura de Resiliência
 
 ```mermaid
 flowchart TD
@@ -378,7 +379,7 @@ flowchart TD
     Fallback --> FallbackResponse[Resposta de Fallback<br/>ou Modelo Alternativo]
 ```
 
-### 5.2. Configurações de Resiliência
+### 6.2. Configurações de Resiliência
 
 O sistema utiliza configurações centralizadas em `ResilienceConfig`:
 
@@ -440,7 +441,7 @@ stateDiagram-v2
 - **Redução de Falhas Percebidas**: Muitas falhas temporárias são resolvidas
 - **Transparência**: Tentativas automáticas sem intervenção do usuário
 
-### 5.2. Retry
+### 6.3. Retry
 
 **Implementação**: Anotação `@Retry` em métodos críticos.
 
@@ -454,7 +455,7 @@ stateDiagram-v2
 - Redução de falhas percebidas pelo usuário
 - Tratamento inteligente de problemas temporários de rede
 
-### 5.3. Rate Limiter
+### 6.4. Rate Limiter
 
 **Implementação**: Anotação `@RateLimiter` em chamadas para APIs externas.
 
@@ -492,7 +493,7 @@ stateDiagram-v2
 // Se nenhum slot disponível após 500ms: Rejeita
 ```
 
-### 5.4. Time Limiter
+### 6.5. Time Limiter
 
 **Implementação**: Anotação `@TimeLimiter` com timeout configurável.
 
@@ -538,7 +539,7 @@ sequenceDiagram
     end
 ```
 
-### 5.5. Fallback Strategy
+### 6.6. Fallback Strategy
 
 **Implementação**: Lógica de orquestração no `GroqOrchestratorService` e métodos de fallback em cada provider.
 
@@ -574,7 +575,7 @@ flowchart TD
 - **Experiência do Usuário**: Resposta sempre fornecida, mesmo que simplificada
 - **Resiliência em Múltiplas Camadas**: Proteção em provider, orquestração e global
 
-### 5.6. Resumo das Configurações de Resiliência
+### 6.7. Resumo das Configurações de Resiliência
 
 **Tabela de Configurações** (`aiProvider`):
 
@@ -596,11 +597,11 @@ flowchart TD
 
 ---
 
-## 6. Padrões de Engenharia de Prompt
+## 7. Padrões de Engenharia de Prompt
 
 A eficácia do sistema depende criticamente da qualidade dos prompts. A arquitetura implementa vários padrões de engenharia de prompt:
 
-### 6.1. Persona Assignment
+### 7.1. Persona Assignment
 
 Atribuição de papéis específicos à IA:
 - **Mentor**: Orientação didática e pedagógica
@@ -609,7 +610,7 @@ Atribuição de papéis específicos à IA:
 - **Tech Recruiter**: Análise profissional de portfólio
 - **Product Manager**: Análise estratégica de produto
 
-### 6.2. Context Injection
+### 7.2. Context Injection
 
 Enriquecimento de prompts com:
 - Perfil de aprendizado do usuário
@@ -617,14 +618,14 @@ Enriquecimento de prompts com:
 - Histórico de interações anteriores
 - Metadados contextuais
 
-### 6.3. Format Specification
+### 7.3. Format Specification
 
 Instruções claras sobre formato de saída:
 - Markdown estruturado para análises
 - JSON para dados estruturados
 - Formatação específica para diferentes casos de uso
 
-### 6.4. Task Decomposition
+### 7.4. Task Decomposition
 
 Quebra de tarefas complexas em subtarefas:
 - Análise estruturada por componentes
@@ -633,11 +634,11 @@ Quebra de tarefas complexas em subtarefas:
 
 ---
 
-## 7. Orquestração Multi-Provider e Múltiplos Agentes Groq
+## 8. Orquestração Multi-Provider e Múltiplos Agentes Groq
 
 O sistema implementa orquestração inteligente para selecionar o provedor/modelo mais adequado para cada tarefa, com suporte especial para múltiplos modelos através da API Groq.
 
-### 7.1. Critérios de Seleção
+### 8.1. Critérios de Seleção
 
 - **Tipo de Tarefa**: Análise complexa vs. resposta rápida
 - **Requisitos de Modalidade**: Texto, imagem, multimodal
@@ -645,7 +646,7 @@ O sistema implementa orquestração inteligente para selecionar o provedor/model
 - **Capacidade do Modelo**: Tamanho de contexto, capacidade de raciocínio
 - **Custo-Benefício**: Balanceamento entre qualidade e custo
 
-### 7.2. Detalhes de Implementação
+### 8.2. Detalhes de Implementação
 
 #### Ollama (Local)
 - **Forças**: Gratuito, privado, zero-latência de rede
@@ -726,7 +727,7 @@ flowchart TD
    - **Latência**: Alta
    - **Reasoning Effort**: N/A (128e-instruct - máximo de instruções)
 
-### 7.3. Estratégia de Seleção de Modelo Groq
+### 8.3. Estratégia de Seleção de Modelo Groq
 
 O `GroqProvider` implementa seleção dinâmica de modelo baseada no parâmetro `model` da requisição:
 
@@ -739,7 +740,7 @@ GroqModel selectedModel = GroqModel.fromString(request.model());
 - Se `model` corresponder a um enum válido → Modelo correspondente
 - Caso contrário → Exceção com modelo desconhecido
 
-### 7.4. Orquestração com Fallback (GroqOrchestratorService)
+### 8.4. Orquestração com Fallback (GroqOrchestratorService)
 
 O `GroqOrchestratorService` implementa uma estratégia de fallback inteligente entre modelos:
 
@@ -774,7 +775,7 @@ sequenceDiagram
 - **Otimização Automática**: Usa modelo mais poderoso quando disponível, fallback para mais rápido
 - **Transparência**: Logging detalhado para análise e debugging
 
-### 7.5. Estratégias de Orquestração Global
+### 8.5. Estratégias de Orquestração Global
 
 O `AIOrchestratorService` implementa roteamento entre provedores:
 
@@ -785,7 +786,7 @@ O `AIOrchestratorService` implementa roteamento entre provedores:
 - **Cost Optimization**: Seleção considerando custo-benefício (futuro)
 - **User Preference**: Respeita preferência do usuário (`preferredProvider` na requisição)
 
-### 7.6. Salvamento no Banco de Dados e RAG
+### 8.6. Salvamento no Banco de Dados e RAG
 
 O sistema salva automaticamente todas as interações no banco de dados para habilitar RAG (Retrieval-Augmented Generation):
 
@@ -816,11 +817,11 @@ O sistema salva automaticamente todas as interações no banco de dados para hab
 
 ---
 
-## 8. Agente de Conhecimento (Writer/Editor)
+## 9. Agente de Conhecimento (Writer/Editor)
 
 Diferente do modo "Chat" (conversacional), o MindForge possui um **Modo Agente** especializado na criação e edição de documentos (`KnowledgeItem`).
 
-### 8.1. Fluxo de Edição Estruturada (Agent Mode)
+### 9.1. Fluxo de Edição Estruturada (Agent Mode)
 
 O objetivo não é apenas conversar, mas **agir** sobre o conteúdo. O agente atua como um editor sênior que propõe alterações cirúrgicas.
 
@@ -830,7 +831,7 @@ O objetivo não é apenas conversar, mas **agir** sobre o conteúdo. O agente at
 - **Context-Aware**: Analisa a estrutura do documento para inserir conteúdo no local semanticamente correto.
 - **Temperatura Baixa**: Opera com temperatura `0.3` para garantir obediência ao formato JSON.
 
-### 8.2. Mecanismo de Diff (JSON Proposal)
+### 9.2. Mecanismo de Diff (JSON Proposal)
 
 O agente recebe o conteúdo atual e a instrução do usuário, e retorna uma proposta de modificação no seguinte formato:
 
@@ -857,7 +858,7 @@ O agente recebe o conteúdo atual e a instrução do usuário, e retorna uma pro
 }
 ```
 
-### 8.3. Pipeline de Processamento (Back-end)
+### 9.3. Pipeline de Processamento (Back-end)
 
 ```mermaid
 sequenceDiagram
@@ -884,7 +885,7 @@ sequenceDiagram
 
 ---
 
-## 9. Conclusão
+## 10. Conclusão
 
 
 A arquitetura de IA do MindForge demonstra como princípios sólidos de engenharia de software podem ser aplicados para construir sistemas inteligentes, robustos e manuteníveis. As decisões de design—orquestração em Java, padrão Strategy, ciclo de memória assíncrono e múltiplos padrões de resiliência—resultam em um sistema que transcende a categoria de simples cliente de API.
