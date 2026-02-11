@@ -12,8 +12,7 @@
 8. [Justificativas Tecnológicas e Trade-offs](#8-justificativas-tecnológicas-e-trade-offs)
 9. [Conexões com APIs Externas e Integrações](#9-conexões-com-apis-externas-e-integrações)
 10. [Modelagem de Dados e Esquema do Banco](#10-modelagem-de-dados-e-esquema-do-banco)
-11. [Trade-offs Atuais](#11-trade-offs-atuais)
-12. [Conclusão](#12-conclusão)
+11. [Conclusão](#11-conclusão)
 
 ---
 
@@ -355,7 +354,7 @@ Isso blinda a camada de serviço de ter que setar manualmente o tenant em cada o
 
 A arquitetura do MindForge não foi construída seguindo padrões "porque sim" ou para demonstrar conhecimento teórico. Cada padrão implementado resolve um **problema concreto** que surgiu das necessidades do domínio de IA e produtividade. Esta seção explica as decisões arquiteturais baseadas em necessidades reais.
 
-### 6.1. Strategy Pattern (AIProvider)
+### 7.1. Strategy Pattern (AIProvider)
 
 **Problema Real**: O projeto precisa integrar múltiplos provedores de IA (Ollama local, Groq cloud) e potencialmente adicionar mais no futuro (OpenAI, Anthropic). Cada provedor tem:
 - APIs diferentes (endpoints, formatos de request/response)
@@ -412,7 +411,7 @@ public class AIOrchestrationService {
 
 ---
 
-### 6.2. Factory Pattern (Provider Selection)
+### 7.2. Factory Pattern (Provider Selection)
 
 **Problema Real**: Cada orquestrador precisa **criar/obter** a instância correta de `AIProvider` baseado em uma string (nome do provedor). Não podemos instanciar diretamente porque:
 - Provedores são gerenciados pelo Spring (injeção de dependência)
@@ -490,7 +489,7 @@ Map<String, AIProvider> aiProviders = {
 
 ---
 
-### 6.3. Chain of Responsibility (Prompt Building)
+### 7.3. Chain of Responsibility (Prompt Building)
 
 **Problema Real**: Construir um prompt efetivo para IA requer **múltiplas etapas sequenciais**:
 1. Definir persona (Mentor, Analyst, Recruiter)
@@ -554,7 +553,7 @@ Sem modularização, teríamos duplicação massiva ou métodos gigantes.
 
 ---
 
-### 6.4. Repository Pattern (Acesso a Dados)
+### 7.4. Repository Pattern (Acesso a Dados)
 
 **Problema Real**: A lógica de negócio não deve depender de detalhes de persistência (SQL, NoSQL, cache). Precisamos:
 - Trocar banco de dados sem reescrever serviços
@@ -593,7 +592,7 @@ Repository Pattern permite essas mudanças sem reescrever toda a lógica de neg�
 
 ---
 
-### 6.5. Async/Background Processing (Ciclo de Memória)
+### 7.5. Async/Background Processing (Ciclo de Memória)
 
 **Problema Real**: Atualizar o perfil de aprendizado do usuário requer:
 1. Buscar histórico de conversas
@@ -626,7 +625,7 @@ public void updateUserProfile(Long userId, ChatMessage newMessage) {
 
 ---
 
-### 6.6. Circuit Breaker + Retry (Resiliência)
+### 7.6. Circuit Breaker + Retry (Resiliência)
 
 **Problema Real**: APIs externas (Ollama, Groq, GitHub) podem:
 - Falhar temporariamente (timeout de rede)
@@ -677,7 +676,7 @@ public AIProviderResponse fallback(Request req, Exception e) {
 
 ---
 
-### 6.7. DTO Pattern (Separação de Camadas)
+### 7.7. DTO Pattern (Separação de Camadas)
 
 **Problema Real**: Entidades JPA não devem ser expostas diretamente na API porque:
 - Contêm anotações de persistência (poluição de responsabilidades)
@@ -722,7 +721,7 @@ public SubjectDTO toDTO(Subject entity) {
 
 ---
 
-### 6.7. Facade Pattern (AI Orchestrator)
+### 7.8. Facade Pattern (AI Orchestrator)
 
 **Problema Real**: O sistema possui **7+ orquestradores especializados** (Chat, Document, Quiz, Roadmap, etc.), cada um com complexidade interna. Os controllers (API layer) não devem conhecer essa complexidade.
 
@@ -751,7 +750,7 @@ public class AIOrchestrationService {
 
 ---
 
-### 6.8. Command Pattern (AI Processing Steps)
+### 7.9. Command Pattern (AI Processing Steps)
 
 **Problema Real**: Pipeline de processamento de IA (Validação -> Contexto -> Prompt -> Execução -> Auditoria) precisa ser flexível e testável.
 
@@ -771,7 +770,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 ---
 
-### 6.9. Ports & Adapters (Hexagonal Architecture)
+### 7.10. Ports & Adapters (Hexagonal Architecture)
 
 **Observação**: Embora o projeto seja um monólito modular, a camada de integração de IA segue estritamente **Ports & Adapters**.
 
@@ -782,7 +781,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 ---
 
-### 6.10. Resumo: Padrões vs Necessidades
+### 7.11. Resumo: Padrões vs Necessidades
 
 | Padrão | Problema Real Resolvido | Alternativa Ingênua | Custo de Não Usar |
 |--------|------------------------|---------------------|-------------------|
@@ -803,7 +802,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 ## 8. Justificativas Tecnológicas e Trade-offs
 
-### 7.1. Escolha da Stack Java/Spring Boot
+### 8.1. Escolha da Stack Java/Spring Boot
 
 **Tecnologias**:
 - **Java 21**: Recursos modernos (Records, Pattern Matching, Virtual Threads)
@@ -821,7 +820,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 - **Overhead**: Maior consumo de memória comparado a frameworks mais leves
 - **Velocidade de Startup**: Mais lento que alternativas minimalistas
 
-### 7.2. Escolha do Padrão AI Provider (Monólito)
+### 8.2. Escolha do Padrão AI Provider (Monólito)
 
 **Decisão**: Integrar IA diretamente na aplicação Java.
 
@@ -835,7 +834,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 - **Ecossistema Python**: Perda de acesso a bibliotecas especializadas (LangChain, LlamaIndex)
 - **Processamento de IA**: Processamento CPU-intensivo pode competir com lógica de negócio
 
-### 7.3. Escolha dos Modelos de IA (Multi-Provider)
+### 8.3. Escolha dos Modelos de IA (Multi-Provider)
 
 **Provedores**:
 - **Groq**: Infraestrutura de IA de alta performance
@@ -859,7 +858,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 - **Gerenciamento**: Necessidade de gerenciar múltiplas chaves de API
 - **Contratos**: Diferentes provedores têm contratos distintos
 
-### 7.4. Frontend Desacoplado (API-First)
+### 8.4. Frontend Desacoplado (API-First)
 
 **Decisão**: API projetada para ser consumida por qualquer cliente.
 
@@ -873,7 +872,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 - **Overhead de Comunicação**: Necessidade de serialização/deserialização HTTP
 - **CORS e Segurança**: Requer configuração adequada para acesso cross-origin
 
-### 7.5. Persistência: PostgreSQL + JPA/Hibernate
+### 8.5. Persistência: PostgreSQL + JPA/Hibernate
 
 **Justificativa**:
 - **SQL Relacional**: Banco de dados relacional maduro e confiável
@@ -891,7 +890,7 @@ Cada passo (`ValidationStep`, `PromptBuildingStep`) é um comando encapsulado. O
 
 O MindForge integra-se com múltiplas APIs externas para fornecer funcionalidades avançadas. Cada integração implementa padrões de resiliência e tratamento de erros adequados.
 
-### 8.1. Arquitetura de Integrações
+### 9.1. Arquitetura de Integrações
 
 ```mermaid
 flowchart TD
@@ -910,7 +909,7 @@ flowchart TD
 
 
 
-### 8.2. Integração com Groq API
+### 9.2. Integração com Groq API
 
 **Propósito**: Múltiplos modelos/agentes especializados, baixa latência.
 
@@ -944,7 +943,7 @@ sequenceDiagram
     Service->>Service: Retornar AIProviderResponse
 ```
 
-### 7.3.1. Fallback Strategy
+#### 9.2.1. Fallback Strategy
 
 **Implementação**: Lógica de orquestração no `GroqOrchestratorService` e métodos de fallback em cada provider.
 
@@ -990,7 +989,7 @@ O `GroqOrchestratorService` implementa fallback automático entre modelos:
 - Time Limiter (5 segundos timeout)
 - Fallback method implementado
 
-### 8.3. Integração com GitHub API
+### 9.3. Integração com GitHub API
 
 **Propósito**: Buscar conteúdo de arquivos de repositórios para análise de código.
 
@@ -1041,7 +1040,7 @@ sequenceDiagram
 - Refresh automático de tokens expirados
 - Tratamento de erros de autenticação robusto
 
-### 8.4. Integração com Web Research API (Tavily/RAG)
+### 9.4. Integração com Web Research API (Tavily/RAG)
 
 **Propósito**: Realizar pesquisas na web em tempo real para enriquecer a base de conhecimento da IA e reduzir alucinações (search grounding).
 
@@ -1073,7 +1072,7 @@ sequenceDiagram
 - **Roadmaps**: Busca cursos, tutoriais e documentação oficial atualizada.
 - **Quizzes**: Valida fatos e busca exemplos recentes para perguntas.
 
-### 8.5. Configuração de RestTemplate
+### 9.5. Configuração de RestTemplate
 
 O projeto utiliza `RestTemplate` para todas as chamadas HTTP externas:
 
@@ -1113,7 +1112,7 @@ public RestTemplate restTemplate(RestTemplateBuilder builder) {
 
 O MindForge utiliza **PostgreSQL** como banco de dados relacional, com mapeamento objeto-relacional via **JPA/Hibernate**.
 
-### 9.1. Diagrama de Entidade-Relacionamento (ER)
+### 10.1. Diagrama de Entidade-Relacionamento (ER)
 
 ```mermaid
 erDiagram
@@ -1236,7 +1235,7 @@ erDiagram
     }
 ```
 
-### 9.2. Entidades Principais e Relacionamentos
+### 10.2. Entidades Principais e Relacionamentos
 
 #### Workspace (Raiz de Agregação)
 - **Relacionamentos**:
@@ -1273,7 +1272,7 @@ erDiagram
   - `communicationTone`: Enum (ENCOURAGING, DIRECT, etc.)
   - `preferredModel`: Modelo de IA preferido do usuário
 
-### 9.3. Estratégias de Persistência
+### 10.3. Estratégias de Persistência
 
 **Fetch Types**:
 - **LAZY**: Relacionamentos `@ManyToOne` e `@OneToMany` por padrão
@@ -1290,7 +1289,7 @@ erDiagram
 **Geração de IDs**:
 - **@GeneratedValue(strategy = GenerationType.IDENTITY)**: IDs auto-incrementais
 
-### 9.4. Tratamento de Dados
+### 10.4. Tratamento de Dados
 
 #### Validação de Entrada
 - **Bean Validation**: Anotações `@NotNull`, `@NotEmpty`, `@Size` nas entidades
